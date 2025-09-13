@@ -1,4 +1,3 @@
-
 services:
   db:
     image: postgres:15
@@ -33,8 +32,8 @@ services:
     depends_on:
       - db
       - minio
-    environment:
-      - ENV_FILE=.env
+    env_file:
+      - .env        # <-- this loads your vars into the container
     volumes:
       - ./:/app
     ports:

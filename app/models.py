@@ -21,3 +21,50 @@ class SiteTruthField(Base):
 
     site = relationship("Site")
 
+class Protocol(Base):
+    __tablename__ = "protocols"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    sponsor = Column(String(255), nullable=True)
+    disease = Column(String(255), nullable=True)
+    phase = Column(String(50), nullable=True)
+    nct_id = Column(String(32), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    requirements = relationship("ProtocolRequirement", back_populates="protocol", cascade="all, delete-orphan")
+
+class ProtocolRequirement(Base):
+    __tablename__ = "protocol_requirements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    protocol_id = Column(Integer, ForeignKey("protocols.id", ondelete="CASCADE"), nullable=False)
+    key = Column(String(128), nullable=False)       # e.g. "ct_scanners"
+    op = Column(String(8), nullable=False)          # "==", ">=", "<=", ">", "<", "in"
+    value = Column(Text, nullable=True)             # store as text; parse as number/list as needed
+    weight = Column(Integer, nullable=False, default=1)
+    type = Column(String(16), nullable=False, default="objective")  # "objective" | "subjective"
+    source_question = Column(Text, nullable=True)   # original question text (for autofill rendering)
+
+    protocol = relationship("Protocol", back_populates="requirements")
+
+# --- NEW: Site Patient Capability (aggregate, no PHI) ---
+
+class SitePatientCapability(Base):
+    __tablename__ = "site_patient_capabilities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+
+    indication_code = Column(String(64), nullable=True)   # e.g., MeSH / ICD-10 code
+    indication_label = Column(String(255), nullable=True) # human label
+
+    age_min_years = Column(Integer, nullable=True)
+    age_max_years = Column(Integer, nullable=True)
+    sex = Column(String(8), nullable=True)  # "all" | "male" | "female"
+
+    annual_eligible_patients = Column(Integer, nullable=True)
+
+    notes = Column(Text, nullable=True)
+    evidence_url = Column(Text, nullable=True)
