@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app import models
-from app.scoring import build_autofill_draft
-from app.llm_provider import generate
+from app.services.autofill import build_autofill_draft
+from app.services.llm_provider import generate
 
 router = APIRouter(prefix="/drafts", tags=["drafts"])
 

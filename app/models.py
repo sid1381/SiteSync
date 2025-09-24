@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Float, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db import Base
@@ -8,6 +8,8 @@ class Site(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     address = Column(Text, nullable=True)
+    emr = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class SiteTruthField(Base):
@@ -18,6 +20,45 @@ class SiteTruthField(Base):
     value = Column(Text, nullable=False)
     unit = Column(String(32), nullable=True)
     evidence_required = Column(Boolean, default=False)
+
+    site = relationship("Site")
+
+class SiteEquipment(Base):
+    __tablename__ = "site_equipment"
+    id = Column(Integer, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    label = Column(String(255), nullable=False)
+    model = Column(String(255), nullable=True)
+    modality = Column(String(100), nullable=True)
+    count = Column(Integer, default=1)
+    specs = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    site = relationship("Site")
+
+class SiteStaff(Base):
+    __tablename__ = "site_staff"
+    id = Column(Integer, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String(100), nullable=False)
+    fte = Column(Float, nullable=True)
+    certifications = Column(Text, nullable=True)
+    experience_years = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    site = relationship("Site")
+
+class SiteHistory(Base):
+    __tablename__ = "site_history"
+    id = Column(Integer, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False)
+    indication = Column(String(255), nullable=True)
+    phase = Column(String(50), nullable=True)
+    enrollment_rate = Column(Float, nullable=True)
+    startup_days = Column(Integer, nullable=True)
+    completed = Column(Boolean, default=False)
+    n_trials = Column(Integer, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     site = relationship("Site")
 

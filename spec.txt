@@ -1,0 +1,386 @@
+Absolutely—here’s a straight-to-the-point backend spec you can hand to Claude Code so it knows what to build and why. This reflects what you and I already stood up (FastAPI + Postgres + MinIO) and extends it into a clean, production-ish shape.
+
+
+# SiteSync Backend — Technical Spec (for Claude Code)
+
+## What we’re building (scope)
+
+**Site-first feasibility assistant** that lets research sites:
+
+1. Store a **Site Profile** (staff, equipment, EMR, past performance, patient indications).
+2. **Ingest protocols** (PDF/Docx or NCT ID lookup).
+3. **Generate a fit score (0–100)** based on objective rules (equipment, staffing, patient coverage, history) + flags for subjective questions.
+4. **Autofill** objective parts of sponsor questionnaires; **surface subjective** ones for human review.
+5. Export a sponsor-ready draft (PDF/XLSX) later.
+
+**Non-goals right now:** no sponsor login, no real eSign, no full compliance stack (we’ll posture for it), no real queueing/scale concerns.
+
+---
+
+## Stack
+
+* **API**: FastAPI (Python 3.11)
+* **DB**: PostgreSQL 15 + SQLAlchemy 2.0 (with Alembic migrations)
+* **Object Storage**: MinIO (S3-compatible) for uploads (protocols, evidence)
+* **LLM**: OpenAI (`openai` SDK) – used for: (a) short rationale text; (b) turning site data into survey-ready text; (c) extracting subjectives from free-form survey text (later).
+* **Container**: Docker + docker-compose
+
+---
+
+## Repo layout (suggested)
+
+```
+app/
+  __init__.py
+  main.py                 # FastAPI app, router mounts
+  config.py               # Pydantic Settings (env vars)
+  db.py                   # engine/session helpers
+  models.py               # SQLAlchemy ORM
+  schemas/                # Pydantic models (request/response)
+    __init__.py
+    site.py
+    protocol.py
+    scoring.py
+    drafts.py
+  routes/
+    __init__.py
+    sites.py              # CRUD sites + truth upsert
+    protocols.py          # import ctgov, add requirements, score, autofill
+    drafts.py             # generate sponsor draft response (JSON for now)
+    demo.py               # seeding + demo ranking
+    llm.py                # dev-only LLM test endpoint
+  services/
+    __init__.py
+    scoring.py            # score_protocol_for_site(), rule eval
+    autofill.py           # build_autofill_draft()
+    ctgov.py              # fetch NCT, normalize to requirements
+    storage.py            # MinIO upload/download signed URLs
+    llm_provider.py       # thin wrapper around OpenAI
+  migrations/             # Alembic versions
+Dockerfile
+docker-compose.yml
+requirements.txt
+alembic.ini
+.env (local only, ignored)
+.env.example
+README.md
+```
+
+---
+
+## Data model (minimum viable)
+
+**Site**
+
+* `id PK`, `name`, `address`, `emr` (str, e.g., “Epic”), `notes`
+* Relationships:
+
+  * `equipment` (1-many) — label, model, modality, count, specs (JSON)
+  * `staff` (1-many) — role, FTE, certifications, experience years
+  * `history` (1-many) — indication, phase, enrollment\_rate, startup\_days, completed (bool), n\_trials
+  * `patient_capabilities` (1-many) — indication\_code/label, age\_min/max, sex, annual\_eligible\_patients, notes, evidence\_url
+  * `truth` (1-many key/value) — normalized site facts used to autofill (“has\_mri\_1\_5t”: true, “crc\_fte”: 1.5, etc.)
+
+**Protocol**
+
+* `id PK`, `name`, `sponsor`, `disease`, `phase`, `nct_id`, `notes`
+* `requirements` (1-many) — each is a rule:
+
+  * `key` (e.g., `equipment.mri_min_tesla`),
+  * `op` (`gte`, `lte`, `eq`, `in`, `exists`, `has_modalities`, etc.),
+  * `value` (stringified JSON),
+  * `weight` (int, default 1),
+  * `type` (`objective` | `subjective`),
+  * `source_question` (optional text)
+
+**Evidence / Files** (later)
+
+* `id PK`, `site_id`, `kind` (“equipment\_certificate”, “policy\_pdf”), `s3_key`, `title`, `uploaded_by`, `uploaded_at`
+
+This mirrors what you’ve got; just make sure `models.py` aligns.
+
+---
+
+## Scoring logic
+
+**Goal:** deterministic, explainable scoring that rolls up to 0–100 with category weights.
+
+**Weights (default):**
+
+* Historical performance: 30
+* Patient indication coverage: 25
+* Equipment & facilities: 20
+* Staffing & certifications: 15
+* EMR & workflows: 10
+
+**Shape of a requirement** (examples):
+
+```json
+{ "key": "equipment.mri_tesla", "op": "gte", "value": 1.5, "weight": 4, "type": "objective" }
+{ "key": "emr.vendor", "op": "in", "value": ["Epic","Cerner"], "weight": 2, "type": "objective" }
+{ "key": "staff.crc_fte", "op": "gte", "value": 1.0, "weight": 3, "type": "objective" }
+{ "key": "patients.eligible_per_year", "op": "gte", "value": 100, "weight": 5, "type": "objective" }
+{ "key": "subjective.recruitment_plan_quality", "op": "needs_text", "weight": 5, "type": "subjective", "source_question": "Describe recruitment plan" }
+```
+
+**Algorithm (service/scoring.py):**
+
+* Load `ProtocolRequirement` rows for protocol.
+* For each objective rule → evaluate against **normalized site truth** (flattened dict built from `Site`, `equipment`, `staff`, `history`, `patient_capabilities`).
+
+  * Track `matches` and `misses` with `explain` strings.
+* Sum matched weights within categories → normalize to 0–100 using the category caps above.
+* Return:
+
+```json
+{
+  "protocol_id": 1,
+  "site_id": 1,
+  "score": 86,
+  "category_breakdown": {
+    "history": 27, "patients": 20, "equipment": 18, "staffing": 12, "emr": 9
+  },
+  "matches": [{ "key":"equipment.mri_tesla", "explain":"1.5T available (>=1.5)"}],
+  "misses": [{ "key":"staff.crc_fte", "explain":"CRC FTE 0.5 < required 1.0"}],
+  "subjective_needed": [
+    { "key":"subjective.recruitment_plan_quality", "source_question":"Describe recruitment plan" }
+  ],
+  "confidence": 0.82    // heuristic: fraction of objective rules we could actually evaluate
+}
+```
+
+**What-if** is just re-scoring with overridden site values (don’t persist).
+
+---
+
+## Autofill logic
+
+**Goal:** Pre-answer objective questions using `Site.truth` and structured profile; group unanswered into “subjective” or “missing”.
+
+`services/autofill.py`:
+
+* Input: `protocol_id`, `site_id`.
+* For each requirement/question:
+
+  * If `type=objective` and we have matching site field → add to `objective_answers` with `value`, `source` (e.g., “Site Profile / equipment”), `confidence`.
+  * If `type=subjective` → add to `unresolved_subjective` with prompt hint.
+  * If `type=objective` but missing data → add to `unresolved_missing_data`.
+* Optionally call LLM **only** to:
+
+  * create a 2–3 sentence **rationale** paragraph for the score,
+  * suggest phrasing for subjective answers (do not auto-finalize; just suggestions).
+
+Return:
+
+```json
+{
+  "protocol_id": 1,
+  "site_id": 1,
+  "objective_answers": [{"key":"emr.vendor","value":"Epic","source":"site_truth"}],
+  "unresolved_subjective": [{"question":"Describe recruitment plan"}],
+  "unresolved_missing_data": ["staff.crc_fte"],
+  "coverage_pct": 74,
+  "rationale": "Based on prior NASH performance and available MRI 1.5T..."
+}
+```
+
+---
+
+## CT.gov ingestion
+
+`services/ctgov.py`:
+
+* `fetch_study(nct_id)`: call public CT.gov JSON API (or for demo, use mocked responses) → normalize to internal format.
+* `build_requirements_from_ctgov(study_json)`: derive minimal requirements:
+
+  * inclusion/exclusion hints (BMI, age ranges),
+  * indication code/label,
+  * equipment hints (if stated),
+  * phase and enrollment target if available.
+* Endpoint: `POST /protocols/import/ctgov` → creates a `Protocol` + inserts derived `ProtocolRequirement` rows, returns `protocol_id`.
+
+---
+
+## Storage
+
+`services/storage.py`:
+
+* Use MinIO credentials from env.
+* `put_object(bucket, key, bytes)`, `get_presigned_url(bucket, key, expires)` for uploads/evidence later.
+* For now we can **skip** real uploads and fake a stored key.
+
+---
+
+## Endpoints (current + target)
+
+Already have (keep):
+
+* `GET /health`
+* `POST /sites/` → create site
+* `GET /sites/`
+* `POST /sites/{site_id}/truth` → upsert normalized fields (k/v list)
+* `GET /sites/{site_id}/truth`
+* `POST /protocols` → create basic shell protocol
+* `GET /protocols`
+* `GET /protocols/{protocol_id}`
+* `POST /protocols/{protocol_id}/requirements` → bulk add rules
+* `GET /protocols/{protocol_id}/requirements`
+* `POST /protocols/import/ctgov` → input `{ "nct_id": "NCT0..." }`
+* `POST /protocols/{protocol_id}/score?site_id=1`
+* `POST /protocols/{protocol_id}/autofill?site_id=1`
+* `POST /drafts/autofill` → same as above but formatted like a sponsor answer set
+* `POST /demo/seed`, `/demo/rank`, `/demo/rank/pretty` (dev only)
+* `POST /llm/test` (dev only)
+
+Add (soon):
+
+* `POST /whatif/score` → same as score but accepts `overrides` object; doesn’t persist.
+* `POST /uploads/protocol` → receive PDF/Docx → (for now) just store and mark attached to protocol.
+
+---
+
+## Auth & tenancy (phase-1 posture)
+
+* **Phase 1**: unauthenticated demo (protected by Cloudflare tunnel link).
+* **Phase 2**: JWT auth (Auth0) + org\_id on all tables for multi-tenancy.
+* Add `created_at`, `updated_at`, `created_by` on objects for audit logs later.
+
+---
+
+## Configuration (.env)
+
+* `DATABASE_URL=postgresql+psycopg2://sitesync:password@db:5432/sitesync`
+* `MINIO_ENDPOINT=http://minio:9000`
+* `MINIO_ACCESS_KEY=minioadmin`
+* `MINIO_SECRET_KEY=minioadmin`
+* `MINIO_BUCKET=sitesync`
+* `OPENAI_API_KEY=sk-...`
+* `LLM_PROVIDER=openai`
+* `LLM_MODEL=gpt-4o-mini`
+* `LLM_TIMEOUT_SECS=20`
+* `ENV=dev`
+
+`config.py` should read these with Pydantic Settings.
+
+---
+
+## LLM usage (keep tight + cheap)
+
+`services/llm_provider.py`:
+
+* Single function `gen_text(system_prompt, user_prompt, max_tokens=200)` using `client.chat.completions.create(...)` (or Responses API if desired, we fixed that earlier).
+* Timeouts & exceptions handled; return plain string or `{"error": "..."}`
+* **Never** send PHI. This is templated boilerplate text generation only.
+
+Used by:
+
+* scoring rationale sentence,
+* suggested wording for subjective answers (optional).
+
+---
+
+## Migrations
+
+* Add Alembic; version the current schema.
+* On container startup, run `alembic upgrade head`.
+* Keep seeds in `/routes/demo.py` for dev data, **not** in migrations.
+
+---
+
+## Testing
+
+* Lightweight pytest for:
+
+  * scoring function pure tests (objective rules evaluate correctly),
+  * autofill covers expected keys,
+  * ctgov parser builds expected minimum requirement set.
+
+---
+
+## Error handling & responses
+
+* Consistent 404 for missing `protocol_id`/`site_id`.
+* 422 for bad payloads.
+* When scoring cannot evaluate a key (missing site data), include it under `unresolved_missing_data` and **do not** crash.
+* Add `trace_id` in logs (later).
+
+---
+
+## Example API contracts
+
+**Create Site**
+
+```http
+POST /sites/
+{
+  "name": "Brown University Site",
+  "address": "Van Wickle St",
+  "emr": "Epic"
+}
+→ 200 { "id": 1, "name": "...", "address": "...", "emr": "Epic" }
+```
+
+**Upsert Site Truth (normalized k/v)**
+
+```http
+POST /sites/1/truth
+{
+  "fields": [
+    {"key":"equipment.mri_tesla","value":1.5},
+    {"key":"staff.crc_fte","value":1.0},
+    {"key":"patients.eligible_per_year","value":350},
+    {"key":"history.nash_trials_3y","value":2},
+    {"key":"history.startup_days_avg","value":45},
+    {"key":"emr.vendor","value":"Epic"}
+  ]
+}
+→ 200 { "status":"ok","count":6 }
+```
+
+**Import protocol via NCT**
+
+```http
+POST /protocols/import/ctgov
+{ "nct_id": "NCT04567890" }
+→ 200 { "protocol_id": 1, "requirements_added": 14, ... }
+```
+
+**Score**
+
+```http
+POST /protocols/1/score?site_id=1
+→ 200 {
+  "protocol_id":1,"site_id":1,"score":86,"confidence":0.82,
+  "category_breakdown":{"history":27,"patients":20,"equipment":18,"staffing":12,"emr":9},
+  "matches":[{"key":"equipment.mri_tesla","explain":"1.5T available (>=1.5)"}],
+  "misses":[{"key":"staff.crc_fte","explain":"0.5 < required 1.0"}],
+  "subjective_needed":[{"key":"subjective.recruitment_plan_quality","source_question":"Describe recruitment plan"}]
+}
+```
+
+**Autofill**
+
+```http
+POST /protocols/1/autofill?site_id=1
+→ 200 {
+  "objective_answers":[{"key":"emr.vendor","value":"Epic","source":"site_truth"}],
+  "unresolved_subjective":[{"question":"Describe recruitment plan"}],
+  "unresolved_missing_data":["staff.crc_fte"],
+  "coverage_pct":74,
+  "rationale":"Based on prior NASH performance and MRI availability..."
+}
+```
+
+---
+
+## How Claude should proceed (next tasks)
+
+1. **Stabilize models + Alembic**: freeze the ORM and add migrations.
+2. **Refactor services** into `services/` (scoring/autofill/ctgov/storage/llm\_provider).
+3. **Tighten schema**: move request/response Pydantic models to `schemas/`.
+4. **Add /whatif/score** endpoint (accepts `overrides` object to simulate extra CRC FTE, etc.).
+5. **LLM provider**: single helper + guardrails; wire to `autofill` rationale only.
+6. **Unit tests** for scoring/autofill core.
+7. **README** with curl examples (we already have most).
+
+If Claude needs current code context (routes you and I wrote), let me know and I’ll paste those files—but this spec is enough to keep building cleanly.

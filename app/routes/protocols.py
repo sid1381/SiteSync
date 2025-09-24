@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app import models
-from app.scoring import score_protocol_for_site, build_autofill_draft, parse_value
-from app.ctgov import fetch_study, build_requirements_from_ctgov
+from app.services.scoring import score_protocol_for_site, parse_value
+from app.services.autofill import build_autofill_draft
+from app.services.ctgov import fetch_study, build_requirements_from_ctgov
 
 router = APIRouter(prefix="/protocols", tags=["protocols"])
 
