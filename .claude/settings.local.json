@@ -15,7 +15,10 @@
       "Bash(git push:*)",
       "Bash(tree:*)",
       "Bash(alembic revision:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(docker:*)",
+      "Bash(DATABASE_URL=\"postgresql://localhost/sitesync\" python scripts/create_demo_data.py)",
+      "Bash(DATABASE_URL=\"postgresql://localhost/sitesync\" python scripts/test_system.py)"
     ],
     "deny": [],
     "ask": []
