@@ -109,3 +109,37 @@ class SitePatientCapability(Base):
 
     notes = Column(Text, nullable=True)
     evidence_url = Column(Text, nullable=True)
+
+    site = relationship("Site")
+
+class FeasibilityAssessment(Base):
+    __tablename__ = "feasibility_assessments"
+
+    id = Column(Integer, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id"), nullable=False)
+    protocol_id = Column(Integer, ForeignKey("protocols.id"), nullable=False)
+    overall_score = Column(Integer, nullable=True)
+    completion_percentage = Column(Integer, nullable=True)
+    time_saved_minutes = Column(Integer, nullable=True)
+    status = Column(String(50), default="draft")  # draft, completed, submitted
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    site = relationship("Site")
+    protocol = relationship("Protocol")
+
+class FeasibilityResponse(Base):
+    __tablename__ = "feasibility_responses"
+
+    id = Column(Integer, primary_key=True)
+    assessment_id = Column(Integer, ForeignKey("feasibility_assessments.id"), nullable=False)
+    question_key = Column(String(128), nullable=False)
+    answer_text = Column(Text, nullable=True)
+    confidence = Column(String(20), nullable=True)  # high, medium, low, manual
+    is_locked = Column(Boolean, default=False)
+    evidence = Column(Text, nullable=True)
+    rationale = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    assessment = relationship("FeasibilityAssessment")
