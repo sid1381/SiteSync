@@ -18,7 +18,10 @@
       "Bash(docker compose:*)",
       "Bash(docker:*)",
       "Bash(DATABASE_URL=\"postgresql://localhost/sitesync\" python scripts/create_demo_data.py)",
-      "Bash(DATABASE_URL=\"postgresql://localhost/sitesync\" python scripts/test_system.py)"
+      "Bash(DATABASE_URL=\"postgresql://localhost/sitesync\" python scripts/test_system.py)",
+      "Bash(npx create-next-app:*)",
+      "Bash(npm install:*)",
+      "Bash(docker-compose:*)"
     ],
     "deny": [],
     "ask": []

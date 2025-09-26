@@ -1,16 +1,16 @@
 services:
-  db:
+  postgres:
     image: postgres:15
     container_name: sitesync_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: sitesync
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: sitesync_password
       POSTGRES_DB: sitesync
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
   minio:
     image: minio/minio:latest
@@ -25,21 +25,57 @@ services:
     volumes:
       - minio_data:/data
 
-  api:
+  backend:
     build: .
-    image: sitesync_api:dev
-    container_name: sitesync_api
-    depends_on:
-      - db
-      - minio
-    env_file:
-      - .env        # <-- this loads your vars into the container
-    volumes:
-      - ./:/app
+    container_name: sitesync_backend
     ports:
       - "8000:8000"
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://sitesync:sitesync_password@postgres:5432/sitesync
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LLM_PROVIDER: openai
+      LLM_MODEL: gpt-4o-mini
+      LLM_TIMEOUT_SECS: 20
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: sitesync
+      ENV: docker
+    depends_on:
+      - postgres
+      - minio
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        echo 'Creating tables directly with SQLAlchemy...' &&
+        python -c 'from app.db import engine; from app.models import Base; Base.metadata.create_all(bind=engine); print(\"Tables created successfully\")' &&
+        echo 'Creating demo data...' &&
+        python scripts/create_demo_data.py &&
+        echo 'Starting FastAPI server...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    volumes:
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      - ./alembic.ini:/app/alembic.ini
+      - ./migrations:/app/migrations
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sitesync_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/public:/app/public
 
 volumes:
-  db_data:
+  postgres_data:
   minio_data:
