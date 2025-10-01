@@ -89,11 +89,17 @@ class AutofillEngine:
     async def process_extracted_questions(
         self,
         extracted_questions: List[Dict],
-        site_profile: Dict
+        site_profile: Dict,
+        protocol_requirements: Dict = None
     ) -> Dict[str, Any]:
         """
         Process already-extracted questions and generate autofilled responses
         This is for when questions are already extracted and we just need mapping
+
+        Args:
+            extracted_questions: List of extracted question objects
+            site_profile: Site capabilities and profile data
+            protocol_requirements: Optional protocol requirements extracted from protocol PDF
         """
         try:
             if not extracted_questions:
@@ -103,14 +109,20 @@ class AutofillEngine:
                     "completion_percentage": 0
                 }
 
+            # Add protocol requirements to site_profile for AI mapper
+            if protocol_requirements:
+                site_profile_with_protocol = {**site_profile, "protocol_requirements": protocol_requirements}
+            else:
+                site_profile_with_protocol = site_profile
+
             # Map questions to site profile data using enhanced mapper
             mappings = self.question_mapper.map_questions_to_site_profile(
-                extracted_questions, site_profile
+                extracted_questions, site_profile_with_protocol
             )
 
-            # Generate autofilled responses with enhanced mapping
+            # Generate autofilled responses with enhanced mapping (including protocol data)
             responses = self.question_mapper.generate_autofill_responses(
-                mappings, extracted_questions, site_profile
+                mappings, extracted_questions, site_profile_with_protocol
             )
 
             # Calculate completion statistics

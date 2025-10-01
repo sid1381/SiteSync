@@ -1216,21 +1216,25 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
 
 Question: {question_text}
 
-OBJECTIVE examples (has factual answer based on site capabilities):
-- "Do you have MRI?"
-- "How many coordinators?"
-- "What is patient volume?"
-- "Is equipment available?"
-- "What certifications does staff have?"
-- "How many trials completed?"
+OBJECTIVE = Can be answered with FACTS from site profile OR protocol data (no human judgment needed)
+Examples:
+- "What is the protocol phase?" → OBJECTIVE (Phase II in protocol)
+- "Is special equipment required?" → OBJECTIVE (FibroScan in protocol requirements)
+- "Is the dosing schedule complex?" → OBJECTIVE (BID dosing in protocol)
+- "Will budget cover expenses?" → OBJECTIVE ($15-20k budget in protocol)
+- "Do you have MRI?" → OBJECTIVE (yes/no from site capabilities)
+- "How many coordinators?" → OBJECTIVE (number from site profile)
+- "What is enrollment target?" → OBJECTIVE (number from protocol)
+- "How long is the study?" → OBJECTIVE (weeks/months from protocol)
 
-SUBJECTIVE examples (requires human judgment, opinion, or cannot be auto-answered):
-- "What challenges do you anticipate?"
-- "Will IRB have concerns?"
-- "Is workload manageable?"
-- "Describe your recruitment strategy"
-- "What is your approach to retention?"
-- "How will you ensure compliance?"
+SUBJECTIVE = Requires HUMAN JUDGMENT, OPINION, or PREDICTION (cannot be answered with facts alone)
+Examples:
+- "What challenges do you anticipate?" → SUBJECTIVE (requires prediction/opinion)
+- "Will IRB have concerns?" → SUBJECTIVE (requires judgment about IRB behavior)
+- "Is workload manageable?" → SUBJECTIVE (requires opinion about capacity)
+- "Describe your recruitment strategy" → SUBJECTIVE (requires human planning)
+- "What is your approach to retention?" → SUBJECTIVE (requires strategy description)
+- "How will you ensure compliance?" → SUBJECTIVE (requires human process description)
 
 Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
 

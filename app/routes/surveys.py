@@ -142,7 +142,8 @@ async def upload_protocol(
 
             enhanced_result = await autofill_engine.process_extracted_questions(
                 survey.survey_questions,  # Already extracted questions (correct method!)
-                site_profile_response
+                site_profile_response,
+                protocol_requirements  # Pass protocol data to mapper!
             )
 
             if enhanced_result["success"]:
