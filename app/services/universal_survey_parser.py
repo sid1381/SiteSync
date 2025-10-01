@@ -1213,29 +1213,46 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
         """
         logger.info(f"🔍 Categorizing question: {question_text[:80]}")
         try:
-            prompt = f"""Categorize this question as OBJECTIVE or SUBJECTIVE:
+            prompt = f"""Categorize this question as OBJECTIVE or SUBJECTIVE based on whether it can be answered from factual data.
 
-Question: {question_text}
+Question: "{question_text}"
 
-OBJECTIVE = Can be answered with FACTS from site profile OR protocol data (no human judgment needed)
-Examples:
-- "What is the protocol phase?" → OBJECTIVE (Phase II in protocol)
-- "Is special equipment required?" → OBJECTIVE (FibroScan in protocol requirements)
-- "Is the dosing schedule complex?" → OBJECTIVE (BID dosing in protocol)
-- "Will budget cover expenses?" → OBJECTIVE ($15-20k budget in protocol)
-- "Do you have MRI?" → OBJECTIVE (yes/no from site capabilities)
-- "How many coordinators?" → OBJECTIVE (number from site profile)
-- "What is enrollment target?" → OBJECTIVE (number from protocol)
-- "How long is the study?" → OBJECTIVE (weeks/months from protocol)
+OBJECTIVE = Answer can be determined from factual data in the protocol or site profile
+- Protocol requirements (population, equipment, staff, procedures, duration, budget, phase, inclusion/exclusion criteria)
+- Site capabilities (equipment available, staff count, certifications, patient volume, facilities)
+- Comparison of protocol needs vs site capabilities
 
-SUBJECTIVE = Requires HUMAN JUDGMENT, OPINION, or PREDICTION (cannot be answered with facts alone)
-Examples:
-- "What challenges do you anticipate?" → SUBJECTIVE (requires prediction/opinion)
-- "Will IRB have concerns?" → SUBJECTIVE (requires judgment about IRB behavior)
-- "Is workload manageable?" → SUBJECTIVE (requires opinion about capacity)
-- "Describe your recruitment strategy" → SUBJECTIVE (requires human planning)
-- "What is your approach to retention?" → SUBJECTIVE (requires strategy description)
-- "How will you ensure compliance?" → SUBJECTIVE (requires human process description)
+OBJECTIVE Examples:
+- "What is the participant health status?" → OBJECTIVE (Protocol specifies: NASH with F2-F3 fibrosis)
+- "What type of treatment population is required?" → OBJECTIVE (Protocol inclusion criteria lists this)
+- "Is the protocol complex with multiple arms?" → OBJECTIVE (Protocol structure shows number of arms)
+- "Are procedures complex?" → OBJECTIVE (Protocol lists specific procedures)
+- "Is dosing schedule complex?" → OBJECTIVE (Protocol says: BID dosing, or TID, etc.)
+- "Will budget cover expenses?" → OBJECTIVE (Protocol budget: $15-20k per patient)
+- "Is adequate staff available?" → OBJECTIVE (Compare protocol needs vs site staff count)
+- "What is the protocol phase?" → OBJECTIVE (Protocol says Phase I/II/III/IV)
+- "Is special equipment required?" → OBJECTIVE (Protocol lists: FibroScan, MRI, etc.)
+- "How long is the study?" → OBJECTIVE (Protocol: 48 weeks)
+- "How many coordinators do you have?" → OBJECTIVE (Site profile: 5 coordinators)
+
+SUBJECTIVE = Requires human judgment, opinion, or prediction that CANNOT be determined from available data
+- Predictions about future problems
+- Opinions about feasibility or manageability
+- Anticipated challenges
+- Judgments about regulatory concerns
+- Speculations about patient behavior
+
+SUBJECTIVE Examples:
+- "Do you foresee IRB problems?" → SUBJECTIVE (Prediction about IRB behavior)
+- "What challenges do you anticipate?" → SUBJECTIVE (Opinion/prediction)
+- "Is workload manageable for your team?" → SUBJECTIVE (Judgment call about capacity)
+- "Will patients miss work for study visits?" → SUBJECTIVE (Speculation about patient behavior)
+- "Do you expect adverse events?" → SUBJECTIVE (Prediction based on clinical judgment)
+- "Describe your recruitment strategy" → SUBJECTIVE (Requires human planning)
+- "How will you ensure patient retention?" → SUBJECTIVE (Requires strategy description)
+
+CRITICAL: If the question asks WHAT/HOW MANY/IS THERE about protocol or site facts, it is OBJECTIVE.
+If the question asks DO YOU THINK/ANTICIPATE/FORESEE/EXPECT about future events or requires judgment, it is SUBJECTIVE.
 
 Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
 
