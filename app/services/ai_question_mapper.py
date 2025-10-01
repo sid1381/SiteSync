@@ -60,6 +60,7 @@ class AIQuestionMapper:
     def _create_site_profile_summary(self, site_profile: Dict) -> str:
         """
         Create a comprehensive summary of site profile data from JSONB structure
+        UPDATED to handle new comprehensive nested structure
         """
         summary_parts = []
 
@@ -67,59 +68,135 @@ class AIQuestionMapper:
         if site_profile.get('name'):
             summary_parts.append(f"Site Name: {site_profile['name']}")
 
-        # Population Capabilities
+        # Population Capabilities - NEW STRUCTURE
         pop_caps = site_profile.get('population_capabilities', {})
         if pop_caps.get('annual_patient_volume'):
             summary_parts.append(f"Annual Patient Volume: {pop_caps['annual_patient_volume']:,}")
         if pop_caps.get('age_groups_treated'):
             summary_parts.append(f"Age Groups: {', '.join(pop_caps['age_groups_treated'])}")
-        if pop_caps.get('common_health_conditions'):
-            conditions = pop_caps['common_health_conditions'][:5]  # First 5
+
+        # Therapeutic areas (new field)
+        if pop_caps.get('therapeutic_areas'):
+            areas = pop_caps['therapeutic_areas'][:5]
+            summary_parts.append(f"Therapeutic Areas: {', '.join(areas)}")
+        # Fallback to old common_health_conditions
+        elif pop_caps.get('common_health_conditions'):
+            conditions = pop_caps['common_health_conditions'][:5]
             summary_parts.append(f"Common Conditions: {', '.join(conditions)}")
 
-        # Staff and Experience
+        # Patient population by condition (new nested structure)
+        patient_pop = pop_caps.get('patient_population', {})
+        if patient_pop.get('available_patients_by_condition'):
+            conditions = patient_pop['available_patients_by_condition']
+            # Show NASH patient count if available
+            if 'NASH (Non-alcoholic Steatohepatitis)' in conditions:
+                nash_count = conditions['NASH (Non-alcoholic Steatohepatitis)']
+                summary_parts.append(f"NASH Patients: {nash_count:,} annually")
+
+        # Staff and Experience - NEW STRUCTURE
         staff = site_profile.get('staff_and_experience', {})
-        if staff.get('coordinators', {}).get('count'):
-            coord_count = staff['coordinators']['count']
-            summary_parts.append(f"Research Coordinators: {coord_count}")
-        if staff.get('investigators', {}).get('count'):
+
+        # Principal Investigator (new structure)
+        pi = staff.get('principal_investigator', {})
+        if pi.get('name'):
+            pi_name = pi['name']
+            pi_specialty = pi.get('specialty', 'Unknown specialty')
+            pi_years = pi.get('years_experience', 0)
+            summary_parts.append(f"Principal Investigator: {pi_name} ({pi_specialty}, {pi_years} years)")
+
+        # Sub-investigators (new structure)
+        sub_invs = staff.get('sub_investigators', [])
+        if sub_invs:
+            specialties = [s.get('specialty', 'Unknown') for s in sub_invs]
+            summary_parts.append(f"Sub-Investigators: {len(sub_invs)} ({', '.join(specialties[:3])})")
+
+        # Fallback to old investigators structure
+        if not pi.get('name') and staff.get('investigators', {}).get('count'):
             inv_count = staff['investigators']['count']
             specialties = staff['investigators'].get('specialties', [])
             summary_parts.append(f"Investigators: {inv_count} ({', '.join(specialties[:3])})")
 
-        # Facilities and Equipment
+        # Study coordinators (new structure)
+        study_coords = staff.get('study_coordinators', {})
+        if study_coords.get('count'):
+            coord_count = study_coords['count']
+            summary_parts.append(f"Research Coordinators: {coord_count}")
+        # Fallback to old coordinators structure
+        elif staff.get('coordinators', {}).get('count'):
+            coord_count = staff['coordinators']['count']
+            summary_parts.append(f"Research Coordinators: {coord_count}")
+
+        # Facilities and Equipment - NEW STRUCTURE
         facilities = site_profile.get('facilities_and_equipment', {})
-        if facilities.get('imaging'):
-            imaging = facilities['imaging'][:5]  # First 5
-            summary_parts.append(f"Imaging Equipment: {', '.join(imaging)}")
-        if facilities.get('lab_capabilities', {}).get('onsite_clinical_lab'):
+
+        # Imaging (new object structure with boolean values)
+        imaging = facilities.get('imaging', {})
+        if isinstance(imaging, dict):
+            # Extract equipment where value is True
+            available_imaging = [key for key, value in imaging.items() if value is True and key != 'notes']
+            if available_imaging:
+                summary_parts.append(f"Imaging Equipment: {', '.join(available_imaging[:5])}")
+        elif isinstance(imaging, list):
+            # Fallback to old array structure
+            summary_parts.append(f"Imaging Equipment: {', '.join(imaging[:5])}")
+
+        # Laboratory (new nested structure)
+        laboratory = facilities.get('laboratory', {})
+        if laboratory.get('on_site_lab'):
+            lab_caps = laboratory.get('capabilities', [])
+            if 'PK processing' in lab_caps:
+                summary_parts.append("Lab: CLIA-certified with PK processing capability")
+            else:
+                summary_parts.append("Lab: CLIA-certified onsite clinical lab")
+        # Fallback to old structure
+        elif facilities.get('lab_capabilities', {}).get('onsite_clinical_lab'):
             summary_parts.append("Lab: CLIA-certified onsite clinical lab")
-        if facilities.get('lab_capabilities', {}).get('freezer_-80C'):
+
+        # Freezer storage (new nested in pharmacy)
+        pharmacy = facilities.get('pharmacy', {})
+        if pharmacy.get('investigational_drug_storage', {}).get('freezer_minus80C'):
+            summary_parts.append("PK Storage: -80C freezer available")
+        # Fallback to old structure
+        elif facilities.get('lab_capabilities', {}).get('freezer_-80C'):
             summary_parts.append("PK Storage: -80C freezer available")
 
         # Operational Capabilities
         ops = site_profile.get('operational_capabilities', {})
-        if ops.get('inpatient_support'):
+        if ops.get('inpatient_capability'):
             summary_parts.append("Inpatient: Hospital units available")
+        elif ops.get('inpatient_support'):
+            summary_parts.append("Inpatient: Hospital units available")
+
         if ops.get('outpatient_clinic'):
             summary_parts.append("Outpatient: Dedicated research clinic")
-        if ops.get('departments_involved'):
+
+        if ops.get('recruitment_methods'):
+            methods = ops['recruitment_methods']
+            summary_parts.append(f"Recruitment: {', '.join(methods[:3])}")
+        elif ops.get('departments_involved'):
             depts = ops['departments_involved'][:3]
             summary_parts.append(f"Departments: {', '.join(depts)}")
 
         # Historical Performance
         history = site_profile.get('historical_performance', {})
-        if history.get('studies_conducted_last_5_years'):
+        if history.get('studies_completed_last_5_years'):
+            study_count = history['studies_completed_last_5_years']
+            summary_parts.append(f"Experience: {study_count} studies in 5 years")
+        elif history.get('studies_conducted_last_5_years'):
             study_count = history['studies_conducted_last_5_years']
             summary_parts.append(f"Experience: {study_count} studies in 5 years")
+
         if history.get('enrollment_success_rate'):
             success_rate = history['enrollment_success_rate']
             summary_parts.append(f"Enrollment Success: {success_rate}")
 
         # Compliance and Training
         compliance = site_profile.get('compliance_and_training', {})
-        if compliance.get('GCP_training'):
+        if compliance.get('gcp_training'):
             summary_parts.append("Training: All staff GCP-certified")
+        elif compliance.get('GCP_training'):
+            summary_parts.append("Training: All staff GCP-certified")
+
         if compliance.get('audit_history'):
             summary_parts.append("Audits: Clean FDA and sponsor audit history")
 
