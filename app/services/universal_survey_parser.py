@@ -1212,47 +1212,86 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
         Categorize question as objective (auto-fillable) or subjective using AI-based analysis
         """
         logger.info(f"🔍 Categorizing question: {question_text[:80]}")
+
+        # RULE-BASED PRE-CHECK: Override for obviously objective questions
+        text_lower = question_text.lower()
+
+        # These are ALWAYS objective - they have factual numeric or specific answers
+        obvious_objective_patterns = [
+            r'what\s+is\s+the\s+(protocol\s+)?phase',
+            r'what\s+is\s+the\s+population\s+age',
+            r'what\s+is\s+the\s+age\s+range',
+            r'what\s+is\s+the\s+number\s+of\s+participants',
+            r'how\s+many\s+participants',
+            r'what\s+is\s+the\s+duration',
+            r'how\s+long\s+is\s+the\s+study',
+            r'what\s+is\s+the\s+budget',
+            r'what\s+is\s+the\s+enrollment\s+target',
+            r'what\s+equipment\s+is\s+required',
+            r'what\s+is\s+the\s+therapeutic\s+area',
+            r'what\s+is\s+the\s+indication',
+        ]
+
+        for pattern in obvious_objective_patterns:
+            if re.search(pattern, text_lower):
+                logger.info(f"✓ RULE-BASED OVERRIDE → OBJECTIVE (matches pattern: {pattern}): {question_text[:60]}")
+                return True, 0.95  # High confidence for rule-based
+
+        # These are ALWAYS subjective - they require prediction/opinion
+        obvious_subjective_patterns = [
+            r'do\s+you\s+(foresee|anticipate|expect|predict)',
+            r'what\s+(challenges|concerns|issues)\s+do\s+you\s+anticipate',
+            r'is\s+(the\s+)?(workload|study)\s+manageable',
+            r'will\s+(patients|participants)\s+(be\s+willing|comply|miss\s+work)',
+        ]
+
+        for pattern in obvious_subjective_patterns:
+            if re.search(pattern, text_lower):
+                logger.info(f"✓ RULE-BASED OVERRIDE → SUBJECTIVE (matches pattern: {pattern}): {question_text[:60]}")
+                return False, 0.95  # High confidence for rule-based
+
+        # If no rule match, use AI
         try:
-            prompt = f"""Categorize this question as OBJECTIVE or SUBJECTIVE based on whether it can be answered from factual data.
+            prompt = f"""Categorize this question as OBJECTIVE or SUBJECTIVE.
 
 Question: "{question_text}"
 
-OBJECTIVE = Answer can be determined from factual data in the protocol or site profile
-- Protocol requirements (population, equipment, staff, procedures, duration, budget, phase, inclusion/exclusion criteria)
-- Site capabilities (equipment available, staff count, certifications, patient volume, facilities)
-- Comparison of protocol needs vs site capabilities
+STRICT RULES:
+1. Questions with NUMERIC or SPECIFIC answers from protocol/site = OBJECTIVE
+   - Ages, numbers, phases, durations, equipment lists, staff counts
+   - Examples: "What is the population age?" (18-75), "How many participants?" (200), "What is the phase?" (Phase II)
 
-OBJECTIVE Examples:
-- "What is the participant health status?" → OBJECTIVE (Protocol specifies: NASH with F2-F3 fibrosis)
-- "What type of treatment population is required?" → OBJECTIVE (Protocol inclusion criteria lists this)
-- "Is the protocol complex with multiple arms?" → OBJECTIVE (Protocol structure shows number of arms)
-- "Are procedures complex?" → OBJECTIVE (Protocol lists specific procedures)
-- "Is dosing schedule complex?" → OBJECTIVE (Protocol says: BID dosing, or TID, etc.)
-- "Will budget cover expenses?" → OBJECTIVE (Protocol budget: $15-20k per patient)
-- "Is adequate staff available?" → OBJECTIVE (Compare protocol needs vs site staff count)
-- "What is the protocol phase?" → OBJECTIVE (Protocol says Phase I/II/III/IV)
-- "Is special equipment required?" → OBJECTIVE (Protocol lists: FibroScan, MRI, etc.)
+2. ALL "WHAT/HOW MANY/HOW LONG" questions about protocol/site = OBJECTIVE
+   - These ask for FACTS, not opinions
+   - "What is..." → OBJECTIVE (unless asking for opinion like "What do you think...")
+   - "How many..." → OBJECTIVE (always asking for count)
+   - "How long..." → OBJECTIVE (always asking for duration)
+
+3. ONLY "DO YOU THINK/ANTICIPATE/FORESEE/EXPECT" = SUBJECTIVE
+   - These ask for PREDICTIONS or OPINIONS
+   - "Do you foresee..." → SUBJECTIVE
+   - "What challenges do you anticipate..." → SUBJECTIVE
+   - "Is workload manageable..." → SUBJECTIVE
+
+ALWAYS OBJECTIVE (factual data exists):
+- "What is the population age?" → OBJECTIVE (Protocol: 18-75 years)
+- "What is the number of participants?" → OBJECTIVE (Protocol: 200 patients)
+- "What is the participant health status?" → OBJECTIVE (Protocol: NASH with F2-F3 fibrosis)
+- "What type of treatment population is required?" → OBJECTIVE (Protocol inclusion criteria)
+- "What is the protocol phase?" → OBJECTIVE (Protocol: Phase I/II/III/IV)
 - "How long is the study?" → OBJECTIVE (Protocol: 48 weeks)
-- "How many coordinators do you have?" → OBJECTIVE (Site profile: 5 coordinators)
+- "What equipment is required?" → OBJECTIVE (Protocol: FibroScan, MRI, etc.)
+- "Will budget cover expenses?" → OBJECTIVE (Protocol budget vs site costs)
+- "Is adequate staff available?" → OBJECTIVE (Protocol needs vs site staff)
 
-SUBJECTIVE = Requires human judgment, opinion, or prediction that CANNOT be determined from available data
-- Predictions about future problems
-- Opinions about feasibility or manageability
-- Anticipated challenges
-- Judgments about regulatory concerns
-- Speculations about patient behavior
+ONLY SUBJECTIVE (prediction/opinion needed):
+- "Do you foresee IRB problems?" → SUBJECTIVE (Prediction)
+- "What challenges do you anticipate?" → SUBJECTIVE (Opinion)
+- "Is workload manageable for your team?" → SUBJECTIVE (Judgment)
+- "Will patients be willing to participate?" → SUBJECTIVE (Speculation)
+- "Do you expect adverse events?" → SUBJECTIVE (Prediction)
 
-SUBJECTIVE Examples:
-- "Do you foresee IRB problems?" → SUBJECTIVE (Prediction about IRB behavior)
-- "What challenges do you anticipate?" → SUBJECTIVE (Opinion/prediction)
-- "Is workload manageable for your team?" → SUBJECTIVE (Judgment call about capacity)
-- "Will patients miss work for study visits?" → SUBJECTIVE (Speculation about patient behavior)
-- "Do you expect adverse events?" → SUBJECTIVE (Prediction based on clinical judgment)
-- "Describe your recruitment strategy" → SUBJECTIVE (Requires human planning)
-- "How will you ensure patient retention?" → SUBJECTIVE (Requires strategy description)
-
-CRITICAL: If the question asks WHAT/HOW MANY/IS THERE about protocol or site facts, it is OBJECTIVE.
-If the question asks DO YOU THINK/ANTICIPATE/FORESEE/EXPECT about future events or requires judgment, it is SUBJECTIVE.
+CRITICAL OVERRIDE: If question starts with "What is..." or "How many..." or "How long..." → ALMOST ALWAYS OBJECTIVE
 
 Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
 
@@ -1270,6 +1309,18 @@ Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
                 logger.info(f"✓ OBJECTIVE: {question_text[:60]}")
                 return True, 0.9
             elif "SUBJECTIVE" in result:
+                # OVERRIDE CHECK: If AI says SUBJECTIVE but question clearly asks for facts, override it
+                override_patterns = [
+                    r'^what\s+is\s+(the\s+)?',
+                    r'^how\s+many\s+',
+                    r'^how\s+long\s+',
+                ]
+
+                for pattern in override_patterns:
+                    if re.search(pattern, text_lower):
+                        logger.warning(f"⚠️ OVERRIDE: AI said SUBJECTIVE but question asks for facts ('{pattern}') → forcing OBJECTIVE: {question_text[:60]}")
+                        return True, 0.85  # Slightly lower confidence for override
+
                 logger.info(f"✓ SUBJECTIVE: {question_text[:60]}")
                 return False, 0.9
             else:
