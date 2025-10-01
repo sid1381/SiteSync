@@ -1639,30 +1639,55 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div>
               <h3 className="font-semibold text-gray-800 mb-3">Laboratory Capabilities</h3>
               <div className="space-y-2">
-                <div className="flex items-center">
-                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                  <span className="text-sm">On-site Clinical Lab (CLIA Certified)</span>
-                </div>
-                <div className="flex items-center">
-                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                  <span className="text-sm">-20°C and -80°C Freezers Available</span>
-                </div>
-                <div className="flex items-center">
-                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                  <span className="text-sm">Temperature Monitoring & Backup Power</span>
-                </div>
-                <div className="flex items-center">
-                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                  <span className="text-sm">Refrigerated Centrifuge Available</span>
-                </div>
+                {profile.facilities_and_equipment?.laboratory?.on_site_lab && (
+                  <div className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                    <span className="text-sm">On-site Clinical Lab (CLIA Certified)</span>
+                  </div>
+                )}
+                {profile.facilities_and_equipment?.pharmacy?.investigational_drug_storage?.freezer_minus80C && (
+                  <div className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                    <span className="text-sm">-80°C Freezer Available</span>
+                  </div>
+                )}
+                {profile.facilities_and_equipment?.pharmacy?.temperature_monitoring && (
+                  <div className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                    <span className="text-sm">Temperature Monitoring & Backup Power</span>
+                  </div>
+                )}
+                {profile.facilities_and_equipment?.laboratory?.sample_processing && (
+                  <div className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                    <span className="text-sm">Sample Processing Available</span>
+                  </div>
+                )}
+                {/* Show capabilities array if available */}
+                {Array.isArray(profile.facilities_and_equipment?.laboratory?.capabilities) &&
+                  profile.facilities_and_equipment.laboratory.capabilities.slice(0, 4).map((cap: string, idx: number) => (
+                    <div key={idx} className="flex items-center">
+                      <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                      <span className="text-sm capitalize">{cap}</span>
+                    </div>
+                  ))
+                }
               </div>
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <div className="text-center p-2 bg-blue-50 rounded">
-                  <p className="text-lg font-bold text-blue-600">{profile.facilities_and_equipment?.procedure_rooms || 4}</p>
+                  <p className="text-lg font-bold text-blue-600">
+                    {typeof profile.facilities_and_equipment?.procedure_rooms === 'object'
+                      ? profile.facilities_and_equipment?.procedure_rooms?.count
+                      : profile.facilities_and_equipment?.procedure_rooms || 4}
+                  </p>
                   <p className="text-xs text-blue-700">Procedure Rooms</p>
                 </div>
                 <div className="text-center p-2 bg-green-50 rounded">
-                  <p className="text-lg font-bold text-green-600">{profile.facilities_and_equipment?.infusion_chairs || 4}</p>
+                  <p className="text-lg font-bold text-green-600">
+                    {typeof profile.facilities_and_equipment?.infusion === 'object'
+                      ? profile.facilities_and_equipment?.infusion?.infusion_chairs
+                      : profile.facilities_and_equipment?.infusion_chairs || 4}
+                  </p>
                   <p className="text-xs text-green-700">Infusion Chairs</p>
                 </div>
               </div>
