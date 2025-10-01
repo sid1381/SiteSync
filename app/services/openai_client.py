@@ -65,39 +65,21 @@ class UnifiedOpenAIClient:
             response = self.client.chat.completions.create(**kwargs)
             return response.choices[0].message.content or ""
 
-        # First time: try max_tokens, fall back to max_completion_tokens
-        try:
-            kwargs = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens
-            }
-            if response_format:
-                kwargs["response_format"] = response_format
+        # Chat Completions API ALWAYS uses max_tokens regardless of model
+        # The error about max_completion_tokens is for a different API (Responses API)
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        if response_format:
+            kwargs["response_format"] = response_format
 
-            response = self.client.chat.completions.create(**kwargs)
-            self._token_param = "max_tokens"
-            logger.info(f"✓ Using max_tokens with {self.model}")
-            return response.choices[0].message.content or ""
-        except Exception as e:
-            error_str = str(e)
-            if "max_completion_tokens" in error_str or "Unsupported parameter" in error_str:
-                logger.info(f"max_tokens not supported, trying max_completion_tokens for {self.model}")
-                kwargs = {
-                    "model": self.model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_completion_tokens": max_tokens
-                }
-                if response_format:
-                    kwargs["response_format"] = response_format
-
-                response = self.client.chat.completions.create(**kwargs)
-                self._token_param = "max_completion_tokens"
-                logger.info(f"✓ Using max_completion_tokens with {self.model}")
-                return response.choices[0].message.content or ""
-            raise
+        response = self.client.chat.completions.create(**kwargs)
+        self._token_param = "max_tokens"  # Always max_tokens for Chat Completions
+        logger.info(f"✓ Using max_tokens with {self.model} (Chat Completions API)")
+        return response.choices[0].message.content or ""
 
     def create_completion(
         self,
