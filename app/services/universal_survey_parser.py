@@ -1209,7 +1209,60 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
 
     def _categorize_question(self, question_text: str) -> Tuple[bool, float]:
         """
-        Categorize question as objective (auto-fillable) or subjective using intelligent analysis
+        Categorize question as objective (auto-fillable) or subjective using AI-based analysis
+        """
+        try:
+            prompt = f"""Categorize this question as OBJECTIVE or SUBJECTIVE:
+
+Question: {question_text}
+
+OBJECTIVE examples (has factual answer based on site capabilities):
+- "Do you have MRI?"
+- "How many coordinators?"
+- "What is patient volume?"
+- "Is equipment available?"
+- "What certifications does staff have?"
+- "How many trials completed?"
+
+SUBJECTIVE examples (requires human judgment, opinion, or cannot be auto-answered):
+- "What challenges do you anticipate?"
+- "Will IRB have concerns?"
+- "Is workload manageable?"
+- "Describe your recruitment strategy"
+- "What is your approach to retention?"
+- "How will you ensure compliance?"
+
+Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
+
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a question categorization expert. Categorize questions as OBJECTIVE (factual, auto-answerable from site data) or SUBJECTIVE (requires human judgment)."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=10
+            )
+
+            result = response.choices[0].message.content.strip().upper()
+
+            if "OBJECTIVE" in result:
+                logger.debug(f"AI categorized as OBJECTIVE: {question_text[:60]}")
+                return True, 0.9
+            elif "SUBJECTIVE" in result:
+                logger.debug(f"AI categorized as SUBJECTIVE: {question_text[:60]}")
+                return False, 0.9
+            else:
+                logger.warning(f"AI categorization unclear: {result}, defaulting to keyword-based")
+                return self._fallback_categorize_question(question_text)
+
+        except Exception as e:
+            logger.warning(f"AI categorization failed: {e}, using fallback")
+            return self._fallback_categorize_question(question_text)
+
+    def _fallback_categorize_question(self, question_text: str) -> Tuple[bool, float]:
+        """
+        Fallback keyword-based categorization when AI is unavailable
         """
         text_lower = question_text.lower()
 

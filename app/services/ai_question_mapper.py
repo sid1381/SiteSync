@@ -211,38 +211,48 @@ YOUR TASK: VALIDATE if the site can meet protocol requirements. You are a FEASIB
 REQUIREMENT VALIDATION LOGIC:
 1. **Identify what the protocol specifically needs** for this question
 2. **Compare protocol requirements to site capabilities**
-3. **Answer YES only if ALL requirements are met**
-4. **Answer NO with specific explanation if ANY requirement is missing**
-5. **Be decisive** - Clear Yes/No, not "maybe" or "generally yes"
+3. **Answer naturally and accurately**:
+   - If definitive match: "Yes, [specific reason]"
+   - If clear gap: "No, [specific gap]"
+   - If uncertain: "Unable to determine [what's missing]" or "Insufficient information to assess [requirement]"
+   - If partial match: "Partially - [what's available and what's missing]"
+4. **Do NOT force Yes/No when the answer isn't binary** - be honest about uncertainty or partial capabilities
 
 VALIDATION EXAMPLES:
 
-Example 1 - Staff Question:
+Example 1 - Clear Gap (Staff):
 Q: "Does the site have adequate staff to conduct this study?"
 Protocol Needs: PI with hepatology experience (0.3 FTE), FibroScan trained coordinator
 Site Has: 3 PIs (Cardiology, Oncology, Endocrinology), 5 coordinators (GCP certified)
-CORRECT Answer: "No - Site lacks PI with hepatology experience and FibroScan trained personnel"
+CORRECT Answer: "No, site lacks PI with hepatology experience and FibroScan trained personnel"
 WRONG Answer: "Yes - 3 PIs and 5 coordinators available" ❌
 
-Example 2 - Equipment Question:
+Example 2 - Partial Match (Equipment):
 Q: "Is specialized equipment required for this study available?"
 Protocol Needs: [CRITICAL] FibroScan device, [CRITICAL] MRI with PDFF capability
 Site Has: MRI (1.5T standard), CT Scanner, Ultrasound
-CORRECT Answer: "No - Missing FibroScan device and MRI lacks PDFF capability required by protocol"
+CORRECT Answer: "Partially - site has MRI but not with PDFF capability, and lacks FibroScan device"
 WRONG Answer: "Yes - MRI and imaging equipment available" ❌
 
-Example 3 - Population Question:
+Example 3 - Clear Match (Population):
 Q: "Do you have access to the required patient population?"
 Protocol Needs: NASH patients with F2-F3 fibrosis, 8-12 patients over 12 months
 Site Has: 450 NASH patients annually, established screening program
-CORRECT Answer: "Yes - 450 NASH patients/year available, can easily meet 8-12 patient requirement"
-WRONG Answer: "450 patients available" (not answering the YES/NO question) ❌
+CORRECT Answer: "Yes, site has 450 NASH patients annually and can easily meet 8-12 patient requirement"
+WRONG Answer: "450 patients available" (not a clear answer) ❌
+
+Example 4 - Insufficient Information:
+Q: "Can site support the required visit schedule?"
+Protocol Needs: [Information not provided in protocol]
+Site Has: Flexible scheduling, experienced coordinators
+CORRECT Answer: "Unable to determine without protocol's specific visit schedule requirements"
+WRONG Answer: "Yes - site has flexible scheduling" ❌
 
 Response format - return ONLY valid JSON:
 {{
     "mapped_field": "requirement category being validated (e.g., 'staff_requirements', 'equipment_required')",
-    "mapped_value": "DECISIVE answer: 'Yes - [specific reason]' OR 'No - [specific gap identified]'",
-    "confidence_score": 0.0-1.0 (high if clear match/mismatch, lower if uncertain),
+    "mapped_value": "Natural answer: 'Yes, [reason]' OR 'No, [gap]' OR 'Partially - [details]' OR 'Unable to determine [what's needed]'",
+    "confidence_score": 0.0-1.0 (high if clear match/mismatch, medium for partial, low for uncertain),
     "reasoning": "Requirement validation logic: what protocol needs vs what site has",
     "source": "requirement_validation"
 }}
@@ -276,11 +286,13 @@ CRITICAL REQUIREMENT VALIDATION RULES:
 
 1. **ALWAYS compare protocol to site** - Never just list what site has
    ❌ WRONG: "Site has 3 PIs and 5 coordinators"
-   ✅ RIGHT: "No - Site lacks PI with required hepatology specialty"
+   ✅ RIGHT: "No, site lacks PI with required hepatology specialty"
 
-2. **Be DECISIVE with Yes/No questions** - Include specific validation reason
+2. **Answer naturally with appropriate format** - Don't force Yes/No when uncertain or partial
    ❌ WRONG: "Yes" or "No" (no explanation)
-   ✅ RIGHT: "Yes - Site has FibroScan and all required imaging" OR "No - Missing MRI with PDFF capability"
+   ✅ RIGHT: "Yes, site has FibroScan and all required imaging"
+   ✅ RIGHT: "Partially - site has MRI but lacks PDFF capability"
+   ✅ RIGHT: "Unable to determine without protocol's specific visit schedule"
 
 3. **WHO questions** → Names or "Unknown", never numbers
    ✅ "Principal Investigator Name" or "Unknown"
@@ -289,16 +301,19 @@ CRITICAL REQUIREMENT VALIDATION RULES:
 4. **Match SPECIFIC protocol requirements**, not general capabilities
    Example: Protocol needs "NASH patients with F2-F3 fibrosis"
    ❌ WRONG: "Yes - 450 NASH patients available"
-   ✅ RIGHT: "Yes - 450 NASH patients with FibroScan for fibrosis staging" OR "No - No fibrosis staging capability"
+   ✅ RIGHT: "Yes, 450 NASH patients with FibroScan for fibrosis staging"
+   ✅ RIGHT: "Partially - 450 NASH patients but no fibrosis staging capability"
 
-5. **ALL critical requirements must be met for "Yes"** - ONE missing requirement = "No"
+5. **Use "Partially" for partial matches** - ONE missing requirement ≠ complete "No"
    Example: Protocol needs [CRITICAL] FibroScan + [CRITICAL] Hepatology PI
    Site has: FibroScan but no hepatology PI
-   ✅ RIGHT: "No - Missing PI with hepatology specialization (critical requirement)"
+   ✅ RIGHT: "Partially - site has FibroScan but lacks PI with hepatology specialization (critical gap)"
+   ❌ WRONG: "No" (ignores what site DOES have)
 
-6. **Provide actionable gap analysis in "No" answers**
+6. **Provide actionable gap analysis in all answers**
    ❌ WRONG: "No - inadequate"
-   ✅ RIGHT: "No - Missing FibroScan device and hepatology-trained staff"
+   ✅ RIGHT: "No, missing FibroScan device and hepatology-trained staff"
+   ✅ RIGHT: "Partially - has FibroScan but lacks hepatology-trained staff"
 
 EXAMPLES OF CORRECT SEMANTIC MATCHING:
 Q: "Who is the PI?" → A: "Principal Investigator Name" or "Unknown" (not "Yes" or numbers)
