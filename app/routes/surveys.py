@@ -3,10 +3,13 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 from datetime import date, datetime
 import json
+import logging
 from pydantic import BaseModel
 from app.db import get_session
 from app import models
 from app.schemas.survey import SurveyCreate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/surveys", tags=["surveys"])
 
