@@ -107,47 +107,142 @@ class ProtocolRequirementExtractor:
         return text
 
     def _extract_with_openai(self, text: str) -> Dict[str, Any]:
-        """Extract requirements using OpenAI structured prompts"""
+        """Extract universal feasibility requirements using OpenAI structured prompts"""
 
-        # Limit text to first 8000 characters to stay within token limits
-        text_sample = text[:8000] if len(text) > 8000 else text
+        # Limit text to first 10000 characters to capture more protocol details
+        text_sample = text[:10000] if len(text) > 10000 else text
 
-        prompt = f"""Extract clinical trial requirements from this protocol text and return as JSON:
+        prompt = f"""Extract key feasibility requirements from this clinical trial protocol that can answer typical sponsor survey questions.
 
 PROTOCOL TEXT:
 {text_sample}
 
-Please extract and return JSON with this exact structure:
+UNIVERSAL EXTRACTION REQUIREMENTS:
+Extract these elements (when present) to answer feasibility questions:
+
+1. **Study Identification**:
+   - Protocol title/number
+   - Sponsor/CRO name
+   - Study phase (Phase I, II, III, IV)
+   - Therapeutic area
+
+2. **Study Design & Timeline**:
+   - Study duration (total weeks/months/years)
+   - Enrollment period (how long to enroll patients)
+   - Enrollment target (number of patients needed)
+   - Visit frequency (how often patients come in)
+   - Study complexity (simple/moderate/complex based on procedures)
+
+3. **Patient Population**:
+   - Primary indication/disease/condition
+   - Age range (min and max)
+   - Key inclusion criteria (top 3-5 most important)
+   - Key exclusion criteria (top 3-5 most restrictive)
+   - Estimated eligible population size
+
+4. **Staff Requirements**:
+   - PI qualifications (specialty, certifications, experience)
+   - Coordinator requirements (FTE, special training, certifications)
+   - Other staff needs (nurses, pharmacists, etc.)
+   - Minimum staffing levels
+
+5. **Equipment & Facilities**:
+   - Imaging equipment (MRI, CT, X-ray, ultrasound, etc.)
+   - Lab equipment (centrifuge, freezers, analyzers)
+   - Storage requirements (-80C freezer, -20C, etc.)
+   - Special devices (FibroScan, DEXA, spirometry, etc.)
+   - Procedure rooms needed
+
+6. **Procedures Required**:
+   - Biopsies (liver, kidney, tissue, etc.)
+   - Scans/imaging (frequency and type)
+   - Lab tests (blood draws, urinalysis, etc.)
+   - Special assessments (ECG, echo, PFT, etc.)
+
+7. **Drug/Treatment Details**:
+   - Drug name/investigational product
+   - Administration route (oral, IV, injection, etc.)
+   - Pharmacy requirements
+   - Storage conditions
+
+Return JSON with this EXACT structure:
 {{
-    "equipment_required": [
-        {{"name": "equipment name", "criticality": "critical|preferred|optional", "purpose": "why needed"}}
-    ],
-    "staff_requirements": [
-        {{"role": "role name", "fte": 0.5, "specialization": "specialty needed", "criticality": "critical|preferred|optional"}}
-    ],
-    "patient_criteria": {{
-        "age_min": 18,
-        "age_max": 75,
-        "target_enrollment": 100,
-        "primary_indication": "disease/condition",
-        "key_inclusion": ["criteria1", "criteria2"],
-        "key_exclusion": ["criteria1", "criteria2"]
+    "study_identification": {{
+        "protocol_number": "string or null",
+        "sponsor_name": "string or null",
+        "cro_name": "string or null",
+        "phase": "Phase I|II|III|IV or null",
+        "therapeutic_area": "string or null"
     }},
-    "procedures": [
-        {{"name": "procedure name", "frequency": "how often", "criticality": "critical|preferred|optional"}}
+    "study_timeline": {{
+        "total_duration_weeks": number or null,
+        "enrollment_period_weeks": number or null,
+        "enrollment_target": number or null,
+        "visit_frequency": "string describing frequency or null",
+        "estimated_visit_count": number or null,
+        "complexity": "simple|moderate|complex"
+    }},
+    "patient_population": {{
+        "primary_indication": "disease/condition",
+        "age_min": number or null,
+        "age_max": number or null,
+        "key_inclusion_criteria": ["criterion1", "criterion2"],
+        "key_exclusion_criteria": ["criterion1", "criterion2"],
+        "estimated_eligible_population": "description or null"
+    }},
+    "staff_requirements": [
+        {{
+            "role": "PI|Coordinator|Nurse|Pharmacist",
+            "fte": number or null,
+            "specialization": "specialty required",
+            "certifications": ["cert1", "cert2"],
+            "criticality": "critical|preferred|optional"
+        }}
     ],
-    "study_details": {{
-        "phase": "Phase I/II/III/IV",
-        "duration_weeks": 24,
-        "visit_count": 10,
-        "complexity": "low|medium|high"
+    "equipment_required": [
+        {{
+            "category": "imaging|lab|storage|device|facility",
+            "name": "specific equipment name",
+            "specifications": "any specific specs (e.g., 1.5T MRI, -80C freezer)",
+            "purpose": "why needed",
+            "criticality": "critical|preferred|optional"
+        }}
+    ],
+    "procedures": [
+        {{
+            "name": "procedure name",
+            "frequency": "how often (e.g., baseline and week 24)",
+            "invasiveness": "non-invasive|minimally-invasive|invasive",
+            "criticality": "critical|preferred|optional"
+        }}
+    ],
+    "drug_treatment": {{
+        "drug_name": "string or null",
+        "administration_route": "oral|IV|subcutaneous|topical|other",
+        "pharmacy_requirements": "description or null",
+        "storage_conditions": "description or null"
     }},
     "critical_flags": [
-        "Must-have requirement that could disqualify a site"
+        "Must-have requirements that could disqualify a site"
     ]
 }}
 
-Focus on concrete, specific requirements rather than general statements. Mark items as "critical" only if explicitly stated as required/mandatory."""
+EXTRACTION RULES:
+1. Extract SPECIFIC information - "MRI with PDFF capability" not just "MRI"
+2. Use NULL for missing data - don't guess or infer
+3. Mark "critical" ONLY if explicitly stated as required/mandatory in protocol
+4. Focus on concrete requirements that answer feasibility questions
+5. Extract actual numbers when present (enrollment target, duration, age ranges)
+6. Capture specialty requirements (e.g., "PI must be hepatologist" not just "PI needed")
+
+This data will be used to answer survey questions like:
+- "What is the protocol phase?" → Use study_identification.phase
+- "How long is the study?" → Use study_timeline.total_duration_weeks
+- "Is special equipment required?" → Check equipment_required array
+- "What is enrollment target?" → Use study_timeline.enrollment_target
+- "What patient population?" → Use patient_population.primary_indication
+
+Return ONLY valid JSON, no explanatory text."""
 
         try:
             # Use unified client with automatic API detection and fallback
@@ -171,29 +266,72 @@ Focus on concrete, specific requirements rather than general statements. Mark it
         """Basic text-based extraction when OpenAI is not available"""
         text_lower = text.lower()
 
+        # Try to extract basic info from text
+        phase = None
+        if 'phase i' in text_lower and 'phase ii' not in text_lower:
+            phase = "Phase I"
+        elif 'phase ii' in text_lower and 'phase iii' not in text_lower:
+            phase = "Phase II"
+        elif 'phase iii' in text_lower and 'phase iv' not in text_lower:
+            phase = "Phase III"
+        elif 'phase iv' in text_lower:
+            phase = "Phase IV"
+
         return {
-            "equipment_required": [
-                {"name": "Standard clinical equipment", "criticality": "optional", "purpose": "Basic study procedures"}
-            ],
-            "staff_requirements": [
-                {"role": "Research coordinator", "fte": 0.5, "specialization": "Clinical research", "criticality": "critical"}
-            ],
-            "patient_criteria": {
+            "study_identification": {
+                "protocol_number": None,
+                "sponsor_name": None,
+                "cro_name": None,
+                "phase": phase,
+                "therapeutic_area": None
+            },
+            "study_timeline": {
+                "total_duration_weeks": None,
+                "enrollment_period_weeks": None,
+                "enrollment_target": None,
+                "visit_frequency": None,
+                "estimated_visit_count": None,
+                "complexity": "moderate"
+            },
+            "patient_population": {
+                "primary_indication": "Various",
                 "age_min": 18,
                 "age_max": 75,
-                "target_enrollment": 50,
-                "primary_indication": "Various",
-                "key_inclusion": ["Adult participants"],
-                "key_exclusion": ["Unable to consent"]
+                "key_inclusion_criteria": ["Adult participants"],
+                "key_exclusion_criteria": ["Unable to provide consent"],
+                "estimated_eligible_population": None
             },
-            "procedures": [
-                {"name": "Standard assessments", "frequency": "Multiple visits", "criticality": "critical"}
+            "staff_requirements": [
+                {
+                    "role": "Coordinator",
+                    "fte": 0.5,
+                    "specialization": "Clinical research",
+                    "certifications": ["GCP"],
+                    "criticality": "critical"
+                }
             ],
-            "study_details": {
-                "phase": "Phase II",
-                "duration_weeks": 24,
-                "visit_count": 8,
-                "complexity": "medium"
+            "equipment_required": [
+                {
+                    "category": "lab",
+                    "name": "Standard clinical equipment",
+                    "specifications": None,
+                    "purpose": "Basic study procedures",
+                    "criticality": "optional"
+                }
+            ],
+            "procedures": [
+                {
+                    "name": "Standard assessments",
+                    "frequency": "Multiple visits",
+                    "invasiveness": "non-invasive",
+                    "criticality": "critical"
+                }
+            ],
+            "drug_treatment": {
+                "drug_name": None,
+                "administration_route": None,
+                "pharmacy_requirements": None,
+                "storage_conditions": None
             },
             "critical_flags": [
                 "Requires experienced research coordinator"

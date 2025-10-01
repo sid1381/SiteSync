@@ -126,40 +126,87 @@ class AIQuestionMapper:
         return "\n".join(summary_parts) if summary_parts else "Limited site profile data available"
 
     def _format_protocol_requirements(self, requirements: Dict) -> str:
-        """Format protocol requirements for AI comparison"""
+        """Format universal protocol requirements for AI comparison"""
         if not requirements:
             return "No specific protocol requirements available - assess general site capabilities"
 
         summary = []
 
-        # Equipment requirements
-        equipment = requirements.get('equipment_required', [])
-        if equipment:
-            summary.append("EQUIPMENT REQUIRED:")
-            for item in equipment:
-                criticality = item.get('criticality', 'optional').upper()
-                summary.append(f"  [{criticality}] {item.get('name')} - {item.get('purpose', '')}")
+        # Study Identification
+        study_id = requirements.get('study_identification', {})
+        if study_id:
+            summary.append("STUDY IDENTIFICATION:")
+            if study_id.get('protocol_number'):
+                summary.append(f"  - Protocol: {study_id['protocol_number']}")
+            if study_id.get('sponsor_name'):
+                summary.append(f"  - Sponsor: {study_id['sponsor_name']}")
+            if study_id.get('cro_name'):
+                summary.append(f"  - CRO: {study_id['cro_name']}")
+            if study_id.get('phase'):
+                summary.append(f"  - Phase: {study_id['phase']}")
+            if study_id.get('therapeutic_area'):
+                summary.append(f"  - Therapeutic Area: {study_id['therapeutic_area']}")
 
-        # Staff requirements
+        # Study Timeline
+        timeline = requirements.get('study_timeline', {})
+        if timeline:
+            summary.append("\nSTUDY TIMELINE:")
+            if timeline.get('total_duration_weeks'):
+                weeks = timeline['total_duration_weeks']
+                summary.append(f"  - Total Duration: {weeks} weeks ({weeks/4:.1f} months)")
+            if timeline.get('enrollment_period_weeks'):
+                summary.append(f"  - Enrollment Period: {timeline['enrollment_period_weeks']} weeks")
+            if timeline.get('enrollment_target'):
+                summary.append(f"  - Enrollment Target: {timeline['enrollment_target']} patients")
+            if timeline.get('visit_frequency'):
+                summary.append(f"  - Visit Frequency: {timeline['visit_frequency']}")
+            if timeline.get('estimated_visit_count'):
+                summary.append(f"  - Estimated Visits: {timeline['estimated_visit_count']}")
+            if timeline.get('complexity'):
+                summary.append(f"  - Study Complexity: {timeline['complexity'].upper()}")
+
+        # Patient Population
+        patient = requirements.get('patient_population', {})
+        if patient:
+            summary.append("\nPATIENT POPULATION REQUIRED:")
+            if patient.get('primary_indication'):
+                summary.append(f"  - Primary Indication: {patient['primary_indication']}")
+            if patient.get('age_min') or patient.get('age_max'):
+                age_min = patient.get('age_min', 'N/A')
+                age_max = patient.get('age_max', 'N/A')
+                summary.append(f"  - Age Range: {age_min}-{age_max} years")
+            if patient.get('key_inclusion_criteria'):
+                summary.append(f"  - Key Inclusion: {', '.join(patient['key_inclusion_criteria'][:3])}")
+            if patient.get('key_exclusion_criteria'):
+                summary.append(f"  - Key Exclusion: {', '.join(patient['key_exclusion_criteria'][:3])}")
+            if patient.get('estimated_eligible_population'):
+                summary.append(f"  - Eligible Population: {patient['estimated_eligible_population']}")
+
+        # Staff Requirements
         staff = requirements.get('staff_requirements', [])
         if staff:
             summary.append("\nSTAFF REQUIRED:")
             for item in staff:
                 criticality = item.get('criticality', 'optional').upper()
-                role = item.get('role')
+                role = item.get('role', 'Staff')
                 spec = item.get('specialization', '')
                 fte = item.get('fte', 'N/A')
-                summary.append(f"  [{criticality}] {role} ({fte} FTE) with {spec}")
+                certs = item.get('certifications', [])
+                cert_str = f", Certs: {', '.join(certs)}" if certs else ""
+                summary.append(f"  [{criticality}] {role} ({fte} FTE) - {spec}{cert_str}")
 
-        # Patient criteria
-        patient = requirements.get('patient_criteria', {})
-        if patient:
-            summary.append("\nPATIENT POPULATION REQUIRED:")
-            summary.append(f"  - Age: {patient.get('age_min', 'N/A')}-{patient.get('age_max', 'N/A')} years")
-            summary.append(f"  - Target Enrollment: {patient.get('target_enrollment', 'N/A')} patients")
-            summary.append(f"  - Primary Indication: {patient.get('primary_indication', 'N/A')}")
-            if patient.get('key_inclusion'):
-                summary.append(f"  - Key Inclusion: {', '.join(patient['key_inclusion'][:3])}")
+        # Equipment Requirements
+        equipment = requirements.get('equipment_required', [])
+        if equipment:
+            summary.append("\nEQUIPMENT REQUIRED:")
+            for item in equipment:
+                criticality = item.get('criticality', 'optional').upper()
+                category = item.get('category', '')
+                name = item.get('name', '')
+                specs = item.get('specifications', '')
+                spec_str = f" ({specs})" if specs else ""
+                purpose = item.get('purpose', '')
+                summary.append(f"  [{criticality}] {name}{spec_str} - {purpose}")
 
         # Procedures
         procedures = requirements.get('procedures', [])
@@ -167,7 +214,22 @@ class AIQuestionMapper:
             summary.append("\nPROCEDURES REQUIRED:")
             for proc in procedures[:5]:  # Limit to 5
                 criticality = proc.get('criticality', 'optional').upper()
-                summary.append(f"  [{criticality}] {proc.get('name')} - {proc.get('frequency', '')}")
+                name = proc.get('name', '')
+                frequency = proc.get('frequency', '')
+                invasiveness = proc.get('invasiveness', '')
+                summary.append(f"  [{criticality}] {name} - {frequency} ({invasiveness})")
+
+        # Drug/Treatment
+        drug = requirements.get('drug_treatment', {})
+        if drug and drug.get('drug_name'):
+            summary.append("\nDRUG/TREATMENT:")
+            summary.append(f"  - Drug: {drug.get('drug_name')}")
+            if drug.get('administration_route'):
+                summary.append(f"  - Route: {drug['administration_route']}")
+            if drug.get('pharmacy_requirements'):
+                summary.append(f"  - Pharmacy: {drug['pharmacy_requirements']}")
+            if drug.get('storage_conditions'):
+                summary.append(f"  - Storage: {drug['storage_conditions']}")
 
         # Critical flags
         flags = requirements.get('critical_flags', [])
@@ -247,6 +309,33 @@ Protocol Needs: [Information not provided in protocol]
 Site Has: Flexible scheduling, experienced coordinators
 CORRECT Answer: "Unable to determine without protocol's specific visit schedule requirements"
 WRONG Answer: "Yes - site has flexible scheduling" ❌
+
+DIRECT PROTOCOL DATA MAPPING:
+When survey questions ask about protocol details, use extracted protocol data:
+
+Example 5 - Protocol Phase:
+Q: "What is the protocol phase?"
+Protocol: Phase III
+CORRECT Answer: "Phase III"
+WRONG Answer: "Yes, site can conduct Phase III trials" ❌
+
+Example 6 - Study Duration:
+Q: "What is the duration of the study?"
+Protocol: 48 weeks total duration
+CORRECT Answer: "48 weeks (12 months)"
+WRONG Answer: "Site can support long studies" ❌
+
+Example 7 - Enrollment Target:
+Q: "How many patients need to be enrolled?"
+Protocol: Enrollment target 30 patients
+CORRECT Answer: "30 patients"
+WRONG Answer: "Site has capacity for enrollment" ❌
+
+Example 8 - Sponsor Name:
+Q: "Who is the sponsor?"
+Protocol: Sponsor - Novartis Pharmaceuticals
+CORRECT Answer: "Novartis Pharmaceuticals"
+WRONG Answer: "Site has worked with major sponsors" ❌
 
 Response format - return ONLY valid JSON:
 {{
