@@ -248,21 +248,159 @@ class AIQuestionMapper:
         question_id = question.get('id', '')
         text_lower = question_text.lower()
 
-        # SPECIAL HANDLING: Time/hour estimation questions
-        if any(pattern in text_lower for pattern in ['how many hours', 'hours for', 'time required', 'estimate for']):
-            # These are numeric estimation questions, not capability questions
-            return AIQuestionMapping(
-                question_id=question_id,
-                question_text=question_text,
-                mapped_field='time_estimation',
-                mapped_value='Unable to determine specific hours without detailed protocol analysis',
-                confidence_score=0.6,
-                source='time_estimation',
-                reasoning='Time estimation question - requires detailed protocol review to provide accurate hours'
-            )
-
         # Get protocol requirements if available
         protocol_requirements = site_profile.get('protocol_requirements', {})
+
+        # QUESTION TYPE DETECTION - Handle before AI call
+        # Type 1: DIRECT VALUE QUESTIONS - Return protocol/site values directly
+        import re
+
+        # Pattern matching for "What is..." questions
+        what_is_match = re.match(r'^what\s+is\s+(the\s+)?(.+)\??$', text_lower)
+        if what_is_match:
+            # Extract what they're asking about
+            asking_about = what_is_match.group(2).strip()
+
+            # Check protocol data first
+            if 'phase' in asking_about:
+                phase = protocol_requirements.get('study_identification', {}).get('phase')
+                if phase:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='protocol_phase',
+                        mapped_value=phase,
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: phase is {phase}'
+                    )
+
+            if 'duration' in asking_about or 'long' in asking_about:
+                weeks = protocol_requirements.get('study_timeline', {}).get('total_duration_weeks')
+                if weeks:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='study_duration',
+                        mapped_value=f'{weeks} weeks ({weeks/4:.1f} months)',
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: study duration is {weeks} weeks'
+                    )
+
+            if 'population' in asking_about or 'participant' in asking_about:
+                indication = protocol_requirements.get('patient_population', {}).get('primary_indication')
+                age_min = protocol_requirements.get('patient_population', {}).get('age_min')
+                age_max = protocol_requirements.get('patient_population', {}).get('age_max')
+                if indication:
+                    age_str = f', ages {age_min}-{age_max}' if age_min and age_max else ''
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='patient_population',
+                        mapped_value=f'{indication}{age_str}',
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: population is {indication}'
+                    )
+
+            if 'number' in asking_about and 'participant' in asking_about:
+                enrollment_target = protocol_requirements.get('study_timeline', {}).get('enrollment_target')
+                if enrollment_target:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='enrollment_target',
+                        mapped_value=f'{enrollment_target} patients',
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: enrollment target is {enrollment_target} patients'
+                    )
+
+            if 'therapeutic area' in asking_about or 'indication' in asking_about:
+                therapeutic_area = protocol_requirements.get('study_identification', {}).get('therapeutic_area')
+                if therapeutic_area:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='therapeutic_area',
+                        mapped_value=therapeutic_area,
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: therapeutic area is {therapeutic_area}'
+                    )
+
+            if 'sponsor' in asking_about:
+                sponsor = protocol_requirements.get('study_identification', {}).get('sponsor_name')
+                if sponsor:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='sponsor_name',
+                        mapped_value=sponsor,
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: sponsor is {sponsor}'
+                    )
+
+        # Type 2: HOW MANY - Return numeric values
+        how_many_match = re.match(r'^how\s+many\s+(.+)\??$', text_lower)
+        if how_many_match:
+            asking_about = how_many_match.group(1).strip()
+
+            # Check for time/hour questions first
+            if 'hour' in asking_about:
+                return AIQuestionMapping(
+                    question_id=question_id,
+                    question_text=question_text,
+                    mapped_field='time_estimation',
+                    mapped_value='Unable to determine specific hours without detailed protocol analysis',
+                    confidence_score=0.6,
+                    source='time_estimation',
+                    reasoning='Time estimation question - requires detailed protocol review to provide accurate hours'
+                )
+
+            if 'participant' in asking_about or 'patient' in asking_about or 'subject' in asking_about:
+                enrollment_target = protocol_requirements.get('study_timeline', {}).get('enrollment_target')
+                if enrollment_target:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='enrollment_target',
+                        mapped_value=f'{enrollment_target} patients',
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: enrollment target is {enrollment_target} patients'
+                    )
+
+            if 'coordinator' in asking_about:
+                coord_count = site_profile.get('staff_and_experience', {}).get('coordinators', {}).get('count')
+                if coord_count:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='coordinator_count',
+                        mapped_value=f'{coord_count} coordinators',
+                        confidence_score=0.95,
+                        source='site_direct',
+                        reasoning=f'Direct site data: {coord_count} coordinators available'
+                    )
+
+            if 'investigator' in asking_about or 'pi' in asking_about:
+                inv_count = site_profile.get('staff_and_experience', {}).get('investigators', {}).get('count')
+                if inv_count:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='investigator_count',
+                        mapped_value=f'{inv_count} investigators',
+                        confidence_score=0.95,
+                        source='site_direct',
+                        reasoning=f'Direct site data: {inv_count} investigators available'
+                    )
+
+        # Type 3: CAPABILITY/GAP ANALYSIS QUESTIONS - Pass to AI for validation
+        # Questions starting with "Do", "Does", "Is", "Are", "Can" need gap analysis
         equipment_required = protocol_requirements.get('equipment_required', [])
         staff_requirements = protocol_requirements.get('staff_requirements', [])
         patient_criteria = protocol_requirements.get('patient_criteria', {})

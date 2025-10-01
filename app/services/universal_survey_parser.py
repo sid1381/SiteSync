@@ -1230,6 +1230,13 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
             r'what\s+equipment\s+is\s+required',
             r'what\s+is\s+the\s+therapeutic\s+area',
             r'what\s+is\s+the\s+indication',
+            # Complexity questions - protocol shows factual data about structure
+            r'is.*protocol.*complex',
+            r'is.*dosing.*schedule.*complex',
+            r'does.*study.*require.*time.*intensive.*pk',
+            r'does.*study.*require.*pk.*sampling',
+            r'are.*procedures.*complex',
+            r'is.*study.*design.*complex',
         ]
 
         for pattern in obvious_objective_patterns:
