@@ -13,7 +13,8 @@ class Settings(BaseModel):
     MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "sitesync")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o")
+    LLM_FALLBACK_MODEL: str = os.getenv("LLM_FALLBACK_MODEL", "gpt-4o")
     LLM_TIMEOUT_SECS: int = int(os.getenv("LLM_TIMEOUT_SECS", "20"))
     ENV: str = os.getenv("ENV", "dev")
 

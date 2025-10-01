@@ -14,18 +14,30 @@ from app import models
 from datetime import datetime
 
 def create_demo_sites(db: Session):
-    """Create demo site profiles with realistic data"""
+    """Create ONLY City Hospital Clinical Research Center as the permanent mock site"""
 
-    # Valley Medical Research - NASH/Hepatology specialist site
-    valley_site = models.Site(
-        name="Valley Medical Research",
-        address="123 Research Blvd, Phoenix, AZ 85001",
-        emr="Epic",
-        notes="Leading research site specializing in NASH, hepatology, and gastroenterology studies"
+    # Check if site 1 already exists
+    existing_site = db.get(models.Site, 1)
+    if existing_site:
+        print(f"Site 1 already exists: {existing_site.name}")
+        return existing_site
+
+    # Delete any existing sites carefully
+    try:
+        db.query(models.Site).delete()
+        db.commit()
+    except Exception as e:
+        print(f"Warning: Could not delete existing sites: {e}")
+        db.rollback()
+
+    # Always create City Hospital as site ID 1
+    city_hospital = models.Site(
+        id=1,
+        name="City Hospital Clinical Research Center"
     )
-    db.add(valley_site)
+    db.add(city_hospital)
     db.commit()
-    db.refresh(valley_site)
+    db.refresh(city_hospital)
 
     # Add site equipment
     equipment_items = [
@@ -40,7 +52,7 @@ def create_demo_sites(db: Session):
 
     for item in equipment_items:
         equipment = models.SiteEquipment(
-            site_id=valley_site.id,
+            site_id=city_hospital.id,
             label=item["label"],
             model=item["model"],
             modality=item["modality"],
@@ -60,7 +72,7 @@ def create_demo_sites(db: Session):
 
     for staff in staff_members:
         staff_member = models.SiteStaff(
-            site_id=valley_site.id,
+            site_id=city_hospital.id,
             role=staff["role"],
             fte=staff["fte"],
             certifications=staff["certifications"],
@@ -79,7 +91,7 @@ def create_demo_sites(db: Session):
 
     for history in history_entries:
         history_entry = models.SiteHistory(
-            site_id=valley_site.id,
+            site_id=city_hospital.id,
             indication=history["indication"],
             phase=history["phase"],
             enrollment_rate=history["enrollment_rate"],
@@ -125,7 +137,7 @@ def create_demo_sites(db: Session):
 
     for capability in patient_capabilities:
         patient_cap = models.SitePatientCapability(
-            site_id=valley_site.id,
+            site_id=city_hospital.id,
             indication_code=capability["indication_code"],
             indication_label=capability["indication_label"],
             age_min_years=capability["age_min_years"],
@@ -162,7 +174,7 @@ def create_demo_sites(db: Session):
 
     for field in truth_fields:
         truth_field = models.SiteTruthField(
-            site_id=valley_site.id,
+            site_id=city_hospital.id,
             key=field["key"],
             value=field["value"],
             unit=field["unit"],
@@ -171,7 +183,7 @@ def create_demo_sites(db: Session):
         db.add(truth_field)
 
     db.commit()
-    return valley_site
+    return city_hospital
 
 def create_demo_protocols(db: Session):
     """Create demo protocols for testing"""
@@ -259,9 +271,9 @@ def main():
 
     try:
         # Create demo site
-        print("Creating Valley Medical Research site...")
-        valley_site = create_demo_sites(db)
-        print(f"✅ Created site: {valley_site.name} (ID: {valley_site.id})")
+        print("Creating City Hospital Clinical Research Center...")
+        city_hospital = create_demo_sites(db)
+        print(f"✅ Created site: {city_hospital.name} (ID: {city_hospital.id})")
 
         # Create demo protocols
         print("Creating demo protocols...")
@@ -271,20 +283,17 @@ def main():
 
         print("\n🎉 Demo data creation completed!")
         print("\nDemo Site Details:")
-        print(f"Site ID: {valley_site.id}")
-        print(f"Site Name: {valley_site.name}")
-        print(f"EMR: {valley_site.emr}")
-        print(f"Equipment count: {len(db.query(models.SiteEquipment).filter(models.SiteEquipment.site_id == valley_site.id).all())}")
-        print(f"Staff count: {len(db.query(models.SiteStaff).filter(models.SiteStaff.site_id == valley_site.id).all())}")
-        print(f"Truth fields count: {len(db.query(models.SiteTruthField).filter(models.SiteTruthField.site_id == valley_site.id).all())}")
+        print(f"Site ID: {city_hospital.id}")
+        print(f"Site Name: {city_hospital.name}")
+        print(f"Profile Completeness: {city_hospital.profile_completeness}%")
 
         print(f"\nNASH Protocol ID: {nash_protocol.id}")
         print(f"Oncology Protocol ID: {oncology_protocol.id}")
 
         print("\n🚀 Ready for testing! Try these API calls:")
-        print(f"GET http://localhost:8000/sites/{valley_site.id}/truth")
-        print(f"POST http://localhost:8000/protocols/{nash_protocol.id}/score?site_id={valley_site.id}")
-        print(f"POST http://localhost:8000/feasibility/process-protocol (with PDF upload)")
+        print(f"GET http://localhost:8000/sites/{city_hospital.id}")
+        print(f"GET http://localhost:8000/site-profile/{city_hospital.id}")
+        print(f"POST http://localhost:8000/surveys/create (then upload survey PDF)")
 
     except Exception as e:
         print(f"❌ Error creating demo data: {e}")

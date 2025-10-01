@@ -39,7 +39,8 @@ MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=sitesync
 OPENAI_API_KEY=your_openai_key_here
 LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
+LLM_MODEL=gpt-4o
+LLM_FALLBACK_MODEL=gpt-4o
 LLM_TIMEOUT_SECS=20
 ENV=dev
 ```

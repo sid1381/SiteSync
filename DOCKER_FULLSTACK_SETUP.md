@@ -104,7 +104,8 @@ DATABASE_URL=postgresql+psycopg2://sitesync:password@db:5432/sitesync
 
 # AI Configuration
 LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
+LLM_MODEL=gpt-4o
+LLM_FALLBACK_MODEL=gpt-4o
 LLM_TIMEOUT_SECS=20
 
 # File Storage

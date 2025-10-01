@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from openai import OpenAI
 
 router = APIRouter(prefix="/llm", tags=["llm"])
-MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+MODEL = os.getenv("LLM_MODEL", "gpt-4o")
 
 def get_client():
     try:

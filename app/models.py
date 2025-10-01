@@ -1,16 +1,31 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Float, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Float, JSON, Date
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from datetime import datetime
 from app.db import Base
 
 class Site(Base):
     __tablename__ = "sites"
+
     id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    address = Column(Text, nullable=True)
-    emr = Column(String(100), nullable=True)
-    notes = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    name = Column(String(200), nullable=False)
+
+    # Flexible JSONB fields matching the comprehensive profile structure
+    population_capabilities = Column(JSONB, default={})
+    staff_and_experience = Column(JSONB, default={})
+    facilities_and_equipment = Column(JSONB, default={})
+    operational_capabilities = Column(JSONB, default={})
+    historical_performance = Column(JSONB, default={})
+    compliance_and_training = Column(JSONB, default={})
+
+    # Metadata
+    profile_completeness = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    surveys = relationship("Survey", back_populates="site")
 
 class SiteTruthField(Base):
     __tablename__ = "site_truth_fields"
@@ -143,3 +158,75 @@ class FeasibilityResponse(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     assessment = relationship("FeasibilityAssessment")
+
+class Survey(Base):
+    """Incoming sponsor surveys/RFIs"""
+    __tablename__ = "surveys"
+
+    id = Column(Integer, primary_key=True)
+    site_id = Column(Integer, ForeignKey("sites.id"))
+
+    # Survey metadata
+    sponsor_name = Column(String(255))
+    study_name = Column(String(255))
+    study_type = Column(String(100))  # Phase I, II, III, IV, Device, Other
+    nct_number = Column(String(50))
+    due_date = Column(Date)
+
+    # Document tracking
+    protocol_file_path = Column(String(500))
+    survey_file_path = Column(String(500))
+    survey_format = Column(String(20))  # 'pdf' or 'excel'
+
+    # Processing status
+    status = Column(String(50), default="pending")  # pending, processing, completed
+    protocol_extracted_data = Column(JSON)
+    survey_questions = Column(JSON)
+
+    # Scoring
+    feasibility_score = Column(Integer)
+    score_breakdown = Column(JSON)
+    flags = Column(JSON)
+
+    # Autofill results
+    autofilled_responses = Column(JSON)
+    completion_percentage = Column(Float)
+
+    # Submission tracking
+    submitted_at = Column(DateTime)
+    submitted_to_email = Column(String(255))
+    export_pdf_path = Column(String(500))
+    export_excel_path = Column(String(500))
+
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # Relationships
+    site = relationship("Site", back_populates="surveys")
+    responses = relationship("SurveyResponse", back_populates="survey")
+
+class SurveyResponse(Base):
+    """Individual responses to survey questions"""
+    __tablename__ = "survey_responses"
+
+    id = Column(Integer, primary_key=True)
+    survey_id = Column(Integer, ForeignKey("surveys.id"))
+
+    question_id = Column(String(50))  # Unique identifier from survey
+    question_text = Column(Text)
+    question_type = Column(String(50))  # text, boolean, number, date, multiple_choice
+
+    # Response categorization
+    is_objective = Column(Boolean)  # True if can be auto-filled from site data
+
+    # Response data
+    response_value = Column(Text)
+    response_source = Column(String(50))  # 'site_profile', 'protocol_extraction', 'manual'
+    confidence_score = Column(Float)  # 0-1 confidence in auto-filled answer
+
+    # Manual review
+    manually_edited = Column(Boolean, default=False)
+    edited_by = Column(String(255))
+    edited_at = Column(DateTime)
+
+    survey = relationship("Survey", back_populates="responses")

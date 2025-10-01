@@ -1,969 +1,1827 @@
-// app/page.tsx - Full integrated SiteSync frontend
+// frontend/app/page.tsx - Complete SiteSync Frontend with Survey Management
+
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertCircle, ChevronRight, Loader2, BarChart3, Users, ClipboardCheck, Sliders, Send, ArrowLeft, Building2, Clock, Target, TrendingUp, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Upload, FileText, CheckCircle, AlertCircle, ChevronRight,
+  Loader2, BarChart3, Users, ClipboardCheck, Sliders, Send,
+  ArrowLeft, Building2, Clock, Target, TrendingUp, AlertTriangle,
+  Plus, Calendar, Mail, Download, FileSpreadsheet,
+  CheckSquare, Square, Edit3, Save, X, Shield, Award, Zap
+} from 'lucide-react';
 
-// API Configuration - connects to your FastAPI backend
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = 'http://localhost:8000';
 
-// Real API service connecting to your FastAPI backend
+// API client with all new survey endpoints
 const api = {
-  // Get sites from backend
+  // Existing endpoints
   async getSites() {
-    try {
-      const response = await fetch(`${API_URL}/sites`);
-      if (!response.ok) throw new Error('Failed to fetch sites');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching sites:', error);
-      return { data: [] };
-    }
+    const response = await fetch(`${API_URL}/sites/`);
+    if (!response.ok) throw new Error('Failed to fetch sites');
+    return response.json();
   },
 
-  // Get protocols/studies
-  async getProtocols() {
-    try {
-      const response = await fetch(`${API_URL}/protocols`);
-      if (!response.ok) throw new Error('Failed to fetch protocols');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching protocols:', error);
-      return { data: [] };
-    }
+  // New survey endpoints
+  async createSurvey(surveyData: any) {
+    const response = await fetch(`${API_URL}/surveys/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(surveyData)
+    });
+    if (!response.ok) throw new Error('Failed to create survey');
+    return response.json();
   },
 
-  // Main feature: Upload protocol and get AI analysis
-  async uploadProtocol(file: File, siteId: number) {
-    console.log('API uploadProtocol called with:', file.name, file.size, 'bytes, siteId:', siteId);
-
-    try {
-      const formData = new FormData();
-      formData.append('protocol_file', file);  // Make sure the field name matches backend
-      console.log('FormData created, sending request to:', `${API_URL}/feasibility/process-protocol?site_id=${siteId}`);
-
-      const response = await fetch(`${API_URL}/feasibility/process-protocol?site_id=${siteId}`, {
-        method: 'POST',
-        body: formData,
-        // Don't set Content-Type header - let browser set it with boundary
-      });
-
-      console.log('Response received:', response.status, response.statusText);
-
-      const text = await response.text();
-      console.log('Raw response text:', text);
-
-      if (!response.ok) {
-        console.error('Response not OK:', response.status, text);
-        throw new Error(`Upload failed: ${response.statusText} - ${text}`);
-      }
-
-      let data;
-      try {
-        data = JSON.parse(text);
-        console.log('Parsed response data:', data);
-      } catch (parseError) {
-        console.error('Failed to parse response:', text);
-        throw new Error('Invalid response from server');
-      }
-
-      // Transform backend response to match our UI needs
-      const result = {
-        success: data.success,
-        data: {
-          protocol_id: data.data?.protocol_id,
-          assessment_id: data.data?.assessment_id || Math.random(),
-          protocol_name: data.data?.protocol_name || file.name.replace('.pdf', ''),
-          nct_id: data.data?.nct_id || 'NCT-PENDING',
-          match_score: data.data?.match_score || 0,
-          auto_filled_count: data.data?.completion_stats?.fields_completed || 0,
-          total_questions: data.data?.completion_stats?.total_fields || 40,
-          completion_percentage: data.data?.completion_stats?.completion_percentage || 0,
-          score_breakdown: data.data?.score_details?.category_scores || {
-            'Patient Population': 35,
-            'Study Procedures': 30,
-            'Operational Capacity': 20,
-            'Equipment': 15
-          },
-          flags: data.data?.score_details?.flags || [],
-          form_responses: {
-            objective: data.data?.form_data?.objective || [],
-            subjective: data.data?.form_data?.subjective || []
-          },
-          raw_extraction: data.data?.extracted_data || {}
-        }
-      };
-
-      console.log('Transformed result:', result);
-      return result;
-    } catch (error) {
-      console.error('Upload exception:', error);
-      throw error;
-    }
+  async getInbox(siteId: number) {
+    const response = await fetch(`${API_URL}/surveys/inbox/${siteId}`);
+    if (!response.ok) throw new Error('Failed to fetch inbox');
+    return response.json();
   },
 
-  // Get form template structure
-  async getFormTemplate() {
-    try {
-      const response = await fetch(`${API_URL}/feasibility/form-templates`);
-      if (!response.ok) throw new Error('Failed to fetch form template');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching form template:', error);
-      return null;
-    }
+  async uploadProtocol(surveyId: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_URL}/surveys/${surveyId}/upload-protocol`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('Failed to upload protocol');
+    return response.json();
   },
 
-  // Save/update form responses
-  async updateResponses(assessmentId: number, responses: any) {
-    try {
-      const response = await fetch(`${API_URL}/feasibility/save-responses`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          assessment_id: assessmentId,
-          responses: responses
-        })
-      });
+  async uploadSurvey(surveyId: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
 
-      if (!response.ok) throw new Error('Failed to save responses');
-      return await response.json();
-    } catch (error) {
-      console.error('Error saving responses:', error);
-      throw error;
-    }
+    const response = await fetch(`${API_URL}/surveys/${surveyId}/upload-survey`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('Failed to upload survey');
+    return response.json();
   },
 
-  // Score protocol for site
-  async scoreProtocol(protocolId: number, siteId: number) {
-    try {
-      const response = await fetch(`${API_URL}/protocols/${protocolId}/score?site_id=${siteId}`, {
-        method: 'POST'
-      });
+  async getSurveyDetails(surveyId: number) {
+    const response = await fetch(`${API_URL}/surveys/${surveyId}`);
+    if (!response.ok) throw new Error('Failed to fetch survey details');
+    return response.json();
+  },
 
-      if (!response.ok) throw new Error('Failed to score protocol');
-      return await response.json();
-    } catch (error) {
-      console.error('Error scoring protocol:', error);
-      return null;
-    }
+  async submitSurvey(surveyId: number, sponsorEmail: string, responses: any[]) {
+    const response = await fetch(`${API_URL}/surveys/${surveyId}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sponsor_email: sponsorEmail,
+        subjective_responses: responses
+      })
+    });
+    if (!response.ok) throw new Error('Failed to submit survey');
+    return response.json();
+  },
+
+  // Site Profile endpoints
+  async getSiteProfile(siteId: number) {
+    const response = await fetch(`${API_URL}/site-profile/${siteId}`);
+    if (!response.ok) throw new Error('Failed to fetch site profile');
+    return response.json();
+  },
+
+  async updateSiteProfile(siteId: number, profileData: any) {
+    const response = await fetch(`${API_URL}/site-profile/${siteId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profileData)
+    });
+    if (!response.ok) throw new Error('Failed to update site profile');
+    return response.json();
   }
 };
 
-// Type definitions
-interface Site {
-  id: number;
-  name: string;
-  address: string;
-  emr: string;
-  capabilities?: string;
-}
-
-interface Protocol {
-  id: number;
-  name: string;
-  nct_id: string;
-  sponsor: string;
-  phase: string;
-  indication: string;
-  target_enrollment?: number;
-}
-
-interface AssessmentData {
-  protocol_id: number;
-  assessment_id: number;
-  protocol_name: string;
-  nct_id: string;
-  match_score: number;
-  auto_filled_count: number;
-  total_questions: number;
-  completion_percentage: number;
-  score_breakdown: Record<string, number>;
-  flags: Array<{level: string, message: string}>;
-  form_responses: {
-    objective: Array<FormResponse>;
-    subjective: Array<FormResponse>;
-  };
-  raw_extraction?: any;
-}
-
-interface FormResponse {
-  key: string;
-  question: string;
-  value: string;
-  locked: boolean;
-  confidence?: number;
-  required?: boolean;
-}
-
 export default function SiteSync() {
-  // State management
-  const [currentScreen, setCurrentScreen] = useState<string>('inbox');
-  const [sites, setSites] = useState<Site[]>([]);
-  const [protocols, setProtocols] = useState<Protocol[]>([]);
-  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
-  const [selectedStudy, setSelectedStudy] = useState<any>(null);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
-  const [formResponses, setFormResponses] = useState<any>(null);
-  const [whatIfScore, setWhatIfScore] = useState(86);
-  const [processingStage, setProcessingStage] = useState('');
+  const [currentView, setCurrentView] = useState<string>('dashboard');
+  const [selectedSite, setSelectedSite] = useState<any>(null);
+  const [surveys, setSurveys] = useState<any[]>([]);
+  const [selectedSurvey, setSelectedSurvey] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [subjectiveAnswers, setSubjectiveAnswers] = useState<Record<string, string>>({});
+  const [processingStage, setProcessingStage] = useState<string>('');
+  const [surveyResponses, setSurveyResponses] = useState<any[]>([]);
+  const [editedResponses, setEditedResponses] = useState<{[key: string]: string}>({});
+  const [siteProfile, setSiteProfile] = useState<any>(null);
 
   // Load initial data
   useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        setIsLoading(true);
-
-        // Load sites
-        const sitesData = await api.getSites();
-        console.log('Sites loaded:', sitesData);
-        setSites(sitesData);
-
-        // Auto-select first site if available and not already selected
-        if (sitesData && sitesData.length > 0 && !selectedSite) {
-          console.log('Auto-selecting site:', sitesData[0]);
-          setSelectedSite(sitesData[0]);
-        }
-
-        // Load protocols
-        const protocolsData = await api.getProtocols();
-        console.log('Protocols loaded:', protocolsData);
-        setProtocols(protocolsData);
-
-      } catch (error) {
-        console.error('Failed to load initial data:', error);
-        setError('Failed to load data from server');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadInitialData();
-  }, []); // Empty dependency array - only run once on mount
+  }, []);
 
-  // Handle file upload and processing
-  const handleFileUpload = async (file: File) => {
-    console.log('Starting file upload:', file.name, file.size, 'bytes');
-
-    if (!selectedSite) {
-      console.error('No site selected');
-      setError('No site selected');
-      return;
-    }
-
-    console.log('Selected site:', selectedSite);
-
-    setUploadedFile(file);
-    setIsProcessing(true);
-    setError(null);
-    setCurrentScreen('processing');
-
-    // Show processing stages
-    const stages = [
-      'Uploading protocol document...',
-      'AI extracting protocol data...',
-      'Mapping to site capabilities...',
-      'Calculating feasibility score...'
-    ];
-
+  const loadInitialData = async () => {
     try {
-      console.log('Starting processing stages...');
-
-      // Show each stage with delay for UX
-      for (let i = 0; i < stages.length; i++) {
-        console.log('Processing stage:', stages[i]);
-        setProcessingStage(stages[i]);
-
-        if (i === 0) {
-          console.log('Calling uploadProtocol API...');
-          // Start actual upload after first stage shows
-          const uploadPromise = api.uploadProtocol(file, selectedSite.id);
-
-          // Show remaining stages while upload happens
-          for (let j = 1; j < stages.length; j++) {
-            await new Promise(resolve => setTimeout(resolve, 800));
-            setProcessingStage(stages[j]);
-          }
-
-          console.log('Waiting for upload result...');
-          // Wait for actual result
-          const result = await uploadPromise;
-          console.log('Upload result received:', result);
-
-          if (result.success) {
-            console.log('Upload successful, processing data...');
-            setAssessmentData(result.data);
-            setFormResponses(result.data.form_responses);
-            setWhatIfScore(result.data.match_score);
-            setCurrentScreen('score');
-          } else {
-            console.error('Upload failed:', result);
-            throw new Error(result.error || 'Processing failed');
-          }
-        }
+      // Fetch first available site dynamically
+      const sites = await api.getSites();
+      if (sites && sites.length > 0) {
+        const firstSite = sites[0];
+        setSelectedSite(firstSite);
+        loadInbox(firstSite.id);
+        loadSiteProfile(firstSite.id);
+      } else {
+        setError('No sites available');
       }
-    } catch (error: any) {
-      console.error('Upload exception:', error);
-      setError(error.message || 'Failed to process protocol. Please check the file and try again.');
-      setCurrentScreen('intake');
-    } finally {
-      console.log('Upload process finished');
-      setIsProcessing(false);
+    } catch (err) {
+      console.error('Error loading sites:', err);
+      setError('Failed to load sites');
     }
   };
 
-  // Inbox Screen - List of studies
-  const InboxScreen = () => (
+  const loadSiteProfile = async (siteId: number) => {
+    try {
+      const profileData = await api.getSiteProfile(siteId);
+      setSiteProfile(profileData);
+    } catch (err) {
+      console.error('Error loading site profile:', err);
+    }
+  };
+
+  const updateSiteProfile = async (profileData: any) => {
+    setLoading(true);
+    try {
+      const result = await api.updateSiteProfile(1, profileData);
+      await loadSiteProfile(1); // Reload updated profile
+      setError(null);
+    } catch (err) {
+      setError('Failed to update site profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadInbox = async (siteId: number) => {
+    try {
+      const inboxData = await api.getInbox(siteId);
+      setSurveys(inboxData.surveys || []);
+    } catch (err) {
+      console.error('Error loading inbox:', err);
+    }
+  };
+
+  // Create new survey
+  const handleCreateSurvey = async (surveyData: any) => {
+    setLoading(true);
+    try {
+      const result = await api.createSurvey({
+        ...surveyData,
+        site_id: selectedSite?.id || 1
+      });
+
+      if (result.success) {
+        await loadInbox(selectedSite?.id || 1);
+        setCurrentView('inbox');
+      }
+    } catch (err) {
+      setError('Failed to create survey');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Upload protocol (SECOND step - requires survey to be uploaded first)
+  const handleProtocolUpload = async (file: File) => {
+    if (!selectedSurvey) return;
+
+    // Verify survey was uploaded first
+    if (selectedSurvey.status !== 'survey_processed' && selectedSurvey.status !== 'ready_for_autofill') {
+      setError('Survey document must be uploaded first before protocol upload');
+      return;
+    }
+
+    setLoading(true);
+    setProcessingStage('Uploading protocol...');
+
+    try {
+      // Processing stages with correct workflow messaging
+      setTimeout(() => setProcessingStage('Extracting protocol requirements...'), 1000);
+      setTimeout(() => setProcessingStage('Mapping protocol needs to survey questions...'), 2500);
+      setTimeout(() => setProcessingStage('Auto-filling with site profile data...'), 4000);
+      setTimeout(() => setProcessingStage('Calculating feasibility score...'), 5500);
+
+      const result = await api.uploadProtocol(selectedSurvey.id, file);
+
+      // Load updated survey details with autofilled responses
+      const details = await api.getSurveyDetails(selectedSurvey.id);
+      setSurveyResponses(details.responses || []);
+
+      setSelectedSurvey({
+        ...selectedSurvey,
+        feasibility_score: result.feasibility_score,
+        completion_percentage: result.completion_percentage,
+        flags: result.flags,
+        protocol_uploaded: true,
+        status: 'autofilled'
+      });
+
+      setProcessingStage('Protocol processed and survey auto-filled!');
+      setTimeout(() => {
+        setProcessingStage('');
+        setCurrentView('review');
+      }, 2000);
+    } catch (err) {
+      setError('Failed to process protocol. ' + (err instanceof Error ? err.message : ''));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Upload survey document (FIRST step - extracts questions to understand what needs answering)
+  const handleSurveyUpload = async (file: File) => {
+    if (!selectedSurvey) return;
+
+    setLoading(true);
+    setProcessingStage('Uploading survey document...');
+
+    try {
+      setTimeout(() => setProcessingStage('Extracting survey questions...'), 1000);
+      setTimeout(() => setProcessingStage('Categorizing objective vs subjective questions...'), 2500);
+
+      const result = await api.uploadSurvey(selectedSurvey.id, file);
+
+      setSelectedSurvey({
+        ...selectedSurvey,
+        questions_extracted: result.questions_extracted,
+        objective_questions: result.objective_questions,
+        subjective_questions: result.subjective_questions,
+        survey_uploaded: true,
+        status: 'survey_processed'
+      });
+
+      setProcessingStage(`Survey processed! Found ${result.questions_extracted} questions (${result.objective_questions} can be auto-filled).`);
+      setTimeout(() => {
+        setProcessingStage('');
+        // Don't automatically go to review - need protocol upload first
+        setCurrentView('upload');
+      }, 3000);
+    } catch (err) {
+      setError('Failed to process survey. ' + (err instanceof Error ? err.message : ''));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle response editing
+  const handleResponseEdit = (questionId: string, value: string) => {
+    setEditedResponses({
+      ...editedResponses,
+      [questionId]: value
+    });
+  };
+
+  // Submit survey
+  const handleSubmitSurvey = async (sponsorEmail: string) => {
+    if (!selectedSurvey) return;
+
+    setLoading(true);
+    try {
+      // Prepare subjective responses with edits
+      const subjectiveResponses = surveyResponses
+        .filter(r => !r.is_objective || editedResponses[r.id])
+        .map(r => ({
+          question_id: r.id,
+          response: editedResponses[r.id] || r.response || ''
+        }));
+
+      const result = await api.submitSurvey(
+        selectedSurvey.id,
+        sponsorEmail,
+        subjectiveResponses
+      );
+
+      setCurrentView('submitted');
+      setSelectedSurvey({
+        ...selectedSurvey,
+        submitted: true,
+        pdf_download: result.pdf_download,
+        excel_download: result.excel_download
+      });
+    } catch (err) {
+      setError('Failed to submit survey');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Render different views
+  const renderView = () => {
+    switch (currentView) {
+      case 'dashboard':
+        return <DashboardView
+          siteId={selectedSite?.id || 1}
+          onNavigateToInbox={() => setCurrentView('inbox')}
+        />;
+
+      case 'inbox':
+        return <InboxView
+          surveys={surveys}
+          onSelectSurvey={(survey) => {
+            setSelectedSurvey(survey);
+            setCurrentView('upload');
+          }}
+          onCreateNew={() => setCurrentView('create')}
+        />;
+
+      case 'create':
+        return <CreateSurveyView
+          onSubmit={handleCreateSurvey}
+          onCancel={() => setCurrentView('inbox')}
+        />;
+
+      case 'profile':
+        return <SiteProfileView
+          profile={siteProfile}
+          onUpdate={(profileData) => updateSiteProfile(profileData)}
+          onBack={() => setCurrentView('dashboard')}
+        />;
+
+      case 'upload':
+        return <UploadView
+          survey={selectedSurvey}
+          onProtocolUpload={handleProtocolUpload}
+          onSurveyUpload={handleSurveyUpload}
+          processingStage={processingStage}
+          loading={loading}
+        />;
+
+      case 'review':
+        return <ReviewView
+          survey={selectedSurvey}
+          responses={surveyResponses}
+          editedResponses={editedResponses}
+          onEdit={handleResponseEdit}
+          onSubmit={() => setCurrentView('submit')}
+          onBack={() => setCurrentView('upload')}
+        />;
+
+      case 'submit':
+        return <SubmitView
+          survey={selectedSurvey}
+          onSubmit={handleSubmitSurvey}
+          onBack={() => setCurrentView('review')}
+        />;
+
+      case 'submitted':
+        return <SubmittedView
+          survey={selectedSurvey}
+          onReturnToInbox={() => {
+            setCurrentView('inbox');
+            loadInbox(1);
+          }}
+        />;
+
+      default:
+        return null;
+    }
+  };
+
+  return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <h1 className="text-2xl font-semibold text-green-600">SiteSync</h1>
-            <span className="text-gray-500">
-              {selectedSite ? selectedSite.name : 'Loading...'}
+            <h1
+              className="text-2xl font-bold text-green-600 cursor-pointer"
+              onClick={() => setCurrentView('dashboard')}
+            >
+              SiteSync
+            </h1>
+            {selectedSite && (
+              <div className="flex items-center text-gray-600">
+                <Building2 className="w-4 h-4 mr-2" />
+                <span>{selectedSite.name}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center space-x-6">
+            <nav className="flex space-x-4">
+              <button
+                onClick={() => setCurrentView('dashboard')}
+                className={`px-3 py-1 rounded text-sm font-medium ${
+                  currentView === 'dashboard'
+                    ? 'text-green-600 bg-green-50'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => setCurrentView('inbox')}
+                className={`px-3 py-1 rounded text-sm font-medium ${
+                  currentView === 'inbox'
+                    ? 'text-green-600 bg-green-50'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Inbox
+              </button>
+              <button
+                onClick={() => setCurrentView('profile')}
+                className={`px-3 py-1 rounded text-sm font-medium ${
+                  currentView === 'profile'
+                    ? 'text-green-600 bg-green-50'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Site Profile
+              </button>
+            </nav>
+            <span className="text-sm text-gray-500">
+              Transform 60-minute surveys into 15-minute workflows
             </span>
           </div>
-          <div className="flex items-center space-x-2 text-sm text-gray-500">
-            <Clock className="w-4 h-4" />
-            <span>{protocols.length} studies available</span>
-          </div>
         </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="container mx-auto px-6 py-8">
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            <AlertCircle className="inline w-4 h-4 mr-2" />
+            {error}
+            <button onClick={() => setError(null)} className="float-right">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {renderView()}
+      </main>
+    </div>
+  );
+}
+
+// Inbox View Component
+function InboxView({ surveys, onSelectSurvey, onCreateNew }: any) {
+  const getSurveyStateInfo = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return {
+          badge: 'Ready for Upload',
+          bgColor: 'bg-green-100',
+          textColor: 'text-green-800',
+          clickable: true,
+          description: 'Upload survey document to start'
+        };
+      case 'survey_processed':
+        return {
+          badge: 'Ready for Protocol',
+          bgColor: 'bg-blue-100',
+          textColor: 'text-blue-800',
+          clickable: true,
+          description: 'Upload protocol document for autofill'
+        };
+      case 'autofilled':
+      case 'protocol_processed':
+        return {
+          badge: 'Completed',
+          bgColor: 'bg-gray-100',
+          textColor: 'text-gray-800',
+          clickable: false,
+          description: 'Review and submit complete'
+        };
+      case 'submitted':
+        return {
+          badge: 'Submitted',
+          bgColor: 'bg-green-100',
+          textColor: 'text-green-800',
+          clickable: false,
+          description: 'Successfully submitted to sponsor'
+        };
+      default:
+        return {
+          badge: status,
+          bgColor: 'bg-gray-100',
+          textColor: 'text-gray-800',
+          clickable: false,
+          description: 'Unknown status'
+        };
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Survey Inbox</h2>
+        <button
+          onClick={onCreateNew}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Survey
+        </button>
       </div>
 
-      {/* Error Alert */}
-      {error && (
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center">
-            <AlertTriangle className="w-5 h-5 text-red-600 mr-2" />
-            <span className="text-red-800">{error}</span>
+      <div className="space-y-4">
+        {surveys.map((survey: any) => {
+          const stateInfo = getSurveyStateInfo(survey.status);
+          return (
+            <div
+              key={survey.id}
+              className={`bg-white p-6 rounded-lg shadow transition ${
+                stateInfo.clickable
+                  ? 'hover:shadow-lg cursor-pointer hover:border-l-4 hover:border-blue-500'
+                  : 'opacity-75 cursor-default'
+              }`}
+              onClick={() => stateInfo.clickable && onSelectSurvey(survey)}
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <h3 className={`text-lg font-semibold ${
+                      stateInfo.clickable ? 'text-gray-900' : 'text-gray-600'
+                    }`}>
+                      {survey.study_name}
+                    </h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${stateInfo.bgColor} ${stateInfo.textColor}`}>
+                      {stateInfo.badge}
+                    </span>
+                  </div>
+
+                  <p className={`${stateInfo.clickable ? 'text-gray-600' : 'text-gray-500'}`}>
+                    {survey.sponsor_name}
+                  </p>
+
+                  <p className={`text-sm mt-1 ${stateInfo.clickable ? 'text-blue-600' : 'text-gray-400'}`}>
+                    {stateInfo.description}
+                  </p>
+
+                  <div className={`mt-3 flex items-center space-x-4 text-sm ${
+                    stateInfo.clickable ? 'text-gray-500' : 'text-gray-400'
+                  }`}>
+                    <span>{survey.study_type}</span>
+                    {survey.nct_number && <span>NCT: {survey.nct_number}</span>}
+                    {survey.due_date && (
+                      <span className="flex items-center">
+                        <Calendar className="w-3 h-3 mr-1" />
+                        Due: {new Date(survey.due_date).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end space-y-2">
+                  {survey.feasibility_score && (
+                    <div className={`text-2xl font-bold ${
+                      stateInfo.clickable ? 'text-green-600' : 'text-green-400'
+                    }`}>
+                      {survey.feasibility_score}/100
+                    </div>
+                  )}
+
+                  {survey.completion_percentage > 0 && (
+                    <span className={`text-sm ${
+                      stateInfo.clickable ? 'text-gray-600' : 'text-gray-400'
+                    }`}>
+                      {survey.completion_percentage.toFixed(0)}% complete
+                    </span>
+                  )}
+
+                  {stateInfo.clickable && (
+                    <div className="flex items-center text-sm text-blue-600 mt-2">
+                      <span>Click to continue</span>
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </div>
+                  )}
+
+                  {!stateInfo.clickable && (
+                    <div className="flex items-center text-sm text-gray-400 mt-2">
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      <span>Complete</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {surveys.length === 0 && (
+        <div className="bg-white p-12 rounded-lg text-center">
+          <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">No surveys in inbox</p>
+          <button
+            onClick={onCreateNew}
+            className="mt-4 text-green-600 hover:text-green-700"
+          >
+            Create your first survey
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Create Survey View
+function CreateSurveyView({ onSubmit, onCancel }: any) {
+  const [formData, setFormData] = useState({
+    sponsor_name: '',
+    study_name: '',
+    study_type: 'Phase II',
+    nct_number: '',
+    due_date: ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <h2 className="text-2xl font-bold mb-6">Create New Survey Entry</h2>
+
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Sponsor Name
+            </label>
+            <input
+              type="text"
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              value={formData.sponsor_name}
+              onChange={(e) => setFormData({...formData, sponsor_name: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Study Name
+            </label>
+            <input
+              type="text"
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              value={formData.study_name}
+              onChange={(e) => setFormData({...formData, study_name: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Study Type
+            </label>
+            <select
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              value={formData.study_type}
+              onChange={(e) => setFormData({...formData, study_type: e.target.value})}
+            >
+              <option>Phase I</option>
+              <option>Phase II</option>
+              <option>Phase III</option>
+              <option>Phase IV</option>
+              <option>Device</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              NCT Number (Optional)
+            </label>
+            <input
+              type="text"
+              placeholder="NCT12345678"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              value={formData.nct_number}
+              onChange={(e) => setFormData({...formData, nct_number: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Due Date
+            </label>
+            <input
+              type="date"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              value={formData.due_date}
+              onChange={(e) => setFormData({...formData, due_date: e.target.value})}
+            />
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end space-x-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+          >
+            Create Survey
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Upload View with dual upload zones
+function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage, loading }: any) {
+  const [protocolFile, setProtocolFile] = useState<File | null>(null);
+  const [surveyFile, setSurveyFile] = useState<File | null>(null);
+
+  const handleDrop = (e: React.DragEvent, type: 'protocol' | 'survey') => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (type === 'protocol') {
+      setProtocolFile(file);
+    } else {
+      setSurveyFile(file);
+    }
+  };
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold">{survey.study_name}</h2>
+        <p className="text-gray-600">{survey.sponsor_name}</p>
+      </div>
+
+      {processingStage && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 px-4 py-3 rounded">
+          <div className="flex items-center">
+            <Loader2 className="animate-spin w-5 h-5 mr-2 text-blue-600" />
+            <span className="text-blue-700">{processingStage}</span>
           </div>
         </div>
       )}
 
-      {/* Study Cards */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Available Studies for Feasibility Assessment</h2>
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Protocol Upload */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            <FileText className="w-5 h-5 mr-2 text-green-600" />
+            Protocol Document
+          </h3>
 
-        <div className="space-y-4">
-          {/* If we have protocols from backend, show them */}
-          {protocols.length > 0 ? (
-            protocols.map((protocol) => (
-              <div
-                key={protocol.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => {
-                  setSelectedStudy({
-                    id: protocol.id,
-                    name: protocol.name,
-                    nct: protocol.nct_id,
-                    sponsor: protocol.sponsor,
-                    phase: protocol.phase,
-                    indication: protocol.indication
-                  });
-                  setCurrentScreen('intake');
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      <h3 className="text-lg font-medium text-gray-900">{protocol.name}</h3>
-                      <span className="px-2 py-1 text-xs font-medium text-white bg-green-500 rounded-full">New</span>
-                    </div>
-                    <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-                      <span>📋 {protocol.nct_id}</span>
-                      <span>🏢 {protocol.sponsor}</span>
-                      <span>📊 {protocol.phase}</span>
-                      <span>🔬 {protocol.indication}</span>
-                    </div>
+          {survey.protocol_uploaded ? (
+            <div className="text-center py-8">
+              <CheckCircle className="w-16 h-16 mx-auto text-green-500 mb-4" />
+              <p className="text-green-600 font-medium">Protocol Uploaded</p>
+              {survey.feasibility_score && (
+                <div className="mt-4">
+                  <div className="text-3xl font-bold text-green-600">
+                    {survey.feasibility_score}/100
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <p className="text-sm text-gray-600">Feasibility Score</p>
                 </div>
-              </div>
-            ))
+              )}
+            </div>
           ) : (
-            // Fallback demo card if no protocols in database
             <div
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => {
-                setSelectedStudy({
-                  name: "Upload New Protocol",
-                  nct: "NCT-NEW",
-                  sponsor: "Any Sponsor"
-                });
-                setCurrentScreen('intake');
-              }}
+              className={`border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition cursor-pointer ${
+                survey.survey_uploaded ? 'hover:border-green-500' : 'opacity-50 cursor-not-allowed'
+              }`}
+              onDrop={(e) => survey.survey_uploaded && handleDrop(e, 'protocol')}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => survey.survey_uploaded && document.getElementById('protocol-input')?.click()}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3">
-                    <h3 className="text-lg font-medium text-gray-900">Upload New Protocol for Assessment</h3>
-                    <span className="px-2 py-1 text-xs font-medium text-white bg-blue-500 rounded-full">Quick Start</span>
-                  </div>
-                  <div className="mt-2 text-sm text-gray-500">
-                    Upload any protocol PDF to see AI-powered feasibility scoring
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
-              </div>
+              <Upload className="w-12 h-12 mx-auto text-gray-500 mb-3" />
+              <p className="text-gray-800 font-medium">Drop protocol PDF here</p>
+              <p className="text-sm text-gray-600 mt-1">or click to browse</p>
+              {!survey.survey_uploaded && (
+                <p className="text-xs text-yellow-700 font-medium mt-2">Upload survey document first</p>
+              )}
+              {survey.survey_uploaded && (
+                <p className="text-xs text-green-700 font-medium mt-2">Ready to upload protocol for autofill</p>
+              )}
+              <input
+                id="protocol-input"
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                disabled={!survey.survey_uploaded}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setProtocolFile(file);
+                    onProtocolUpload(file);
+                  }
+                }}
+              />
+              {protocolFile && (
+                <p className="mt-3 text-sm text-green-600">{protocolFile.name}</p>
+              )}
             </div>
           )}
         </div>
 
-        {/* Site selector if multiple sites */}
-        {sites.length > 1 && (
-          <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Active Site</label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              value={selectedSite?.id}
-              onChange={(e) => {
-                const site = sites.find(s => s.id === parseInt(e.target.value));
-                setSelectedSite(site || null);
-              }}
+        {/* Survey Upload */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-semibold mb-4 flex items-center">
+            <ClipboardCheck className="w-5 h-5 mr-2 text-blue-600" />
+            Survey Document
+          </h3>
+
+          {survey.survey_uploaded ? (
+            <div className="text-center py-8">
+              <CheckCircle className="w-16 h-16 mx-auto text-green-500 mb-4" />
+              <p className="text-green-600 font-medium">Survey Uploaded</p>
+              <div className="mt-4 space-y-2">
+                <p className="text-sm text-gray-600">
+                  {survey.questions_extracted} questions extracted
+                </p>
+                <p className="text-sm text-gray-600">
+                  {survey.questions_autofilled} auto-filled
+                </p>
+                <div className="text-2xl font-bold text-blue-600">
+                  {survey.completion_percentage?.toFixed(0)}%
+                </div>
+                <p className="text-sm text-gray-600">Auto-completion</p>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition cursor-pointer"
+              onDrop={(e) => handleDrop(e, 'survey')}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => document.getElementById('survey-input')?.click()}
             >
-              {sites.map(site => (
-                <option key={site.id} value={site.id}>
-                  {site.name} - {site.address}
-                </option>
-              ))}
-            </select>
+              <Upload className="w-12 h-12 mx-auto text-gray-500 mb-3" />
+              <p className="text-gray-800 font-medium">Drop survey PDF or Excel</p>
+              <p className="text-sm text-gray-600 mt-1">or click to browse</p>
+              <p className="text-xs text-blue-600 font-medium mt-2">Upload survey first to extract questions</p>
+              <input
+                id="survey-input"
+                type="file"
+                accept=".pdf,.xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setSurveyFile(file);
+                    onSurveyUpload(file);
+                  }
+                }}
+              />
+              {surveyFile && (
+                <p className="mt-3 text-sm text-blue-600">{surveyFile.name}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Flags and recommendations */}
+      {survey.flags && survey.flags.length > 0 && (
+        <div className="mt-6 bg-yellow-50 border border-yellow-200 p-4 rounded">
+          <h4 className="font-semibold text-yellow-800 mb-2">Attention Areas</h4>
+          <ul className="space-y-1">
+            {survey.flags.map((flag: string, idx: number) => (
+              <li key={idx} className="text-sm text-yellow-700 flex items-start">
+                <AlertTriangle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                {flag}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Review View with objective/subjective tabs
+function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBack }: any) {
+  const [activeTab, setActiveTab] = useState<'objective' | 'subjective'>('objective');
+
+  const objectiveResponses = responses.filter((r: any) => r.is_objective);
+  const subjectiveResponses = responses.filter((r: any) => !r.is_objective);
+
+  const activeResponses = activeTab === 'objective' ? objectiveResponses : subjectiveResponses;
+
+  return (
+    <div>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold">Review Responses</h2>
+          <p className="text-gray-600">{survey.study_name}</p>
+        </div>
+        <button
+          onClick={onBack}
+          className="flex items-center text-gray-600 hover:text-gray-900"
+        >
+          <ArrowLeft className="w-4 h-4 mr-1" />
+          Back
+        </button>
+      </div>
+
+      {/* Completion stats */}
+      <div className="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
+        <div className="grid grid-cols-3 gap-6 text-center">
+          <div className="border-r border-gray-200">
+            <div className="text-3xl font-bold text-green-600">
+              {objectiveResponses.length}
+            </div>
+            <p className="text-sm font-medium text-gray-800 mt-1">Objective (Auto-filled)</p>
+          </div>
+          <div className="border-r border-gray-200">
+            <div className="text-3xl font-bold text-blue-600">
+              {subjectiveResponses.length}
+            </div>
+            <p className="text-sm font-medium text-gray-800 mt-1">Subjective (Manual)</p>
+          </div>
+          <div>
+            <div className="text-3xl font-bold text-purple-600">
+              {survey.completion_percentage?.toFixed(0)}%
+            </div>
+            <p className="text-sm font-medium text-gray-800 mt-1">Auto-completion Rate</p>
+          </div>
+        </div>
+
+        {/* Warning if subjective questions need input */}
+        {subjectiveResponses.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="flex items-center justify-center text-amber-700 bg-amber-50 px-4 py-2 rounded-md">
+              <AlertTriangle className="w-5 h-5 mr-2 flex-shrink-0" />
+              <span className="text-sm font-medium">
+                {subjectiveResponses.length} subjective question{subjectiveResponses.length !== 1 ? 's' : ''} require{subjectiveResponses.length === 1 ? 's' : ''} manual input
+              </span>
+            </div>
           </div>
         )}
       </div>
-    </div>
-  );
 
-  // Intake Screen - Upload protocol
-  const IntakeScreen = () => {
-    const handleDrop = (e: React.DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file && file.type === 'application/pdf') {
-        handleFileUpload(file);
-      }
-    };
-
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <button onClick={() => setCurrentScreen('inbox')} className="hover:text-gray-900">
-              Inbox
-            </button>
-            <ChevronRight className="w-4 h-4" />
-            <span className="text-gray-900">{selectedStudy?.name || 'New Protocol'}</span>
-          </div>
-        </div>
-
-        {/* Upload Section */}
-        <div className="max-w-3xl mx-auto px-6 py-12">
-          {/* Show selected site */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <p className="text-sm text-blue-700">
-              <strong>Selected Site:</strong> {selectedSite?.name || 'No site selected'}
-            </p>
-            {selectedSite && (
-              <p className="text-xs text-blue-600 mt-1">
-                {selectedSite.address} • EMR: {selectedSite.emr}
-              </p>
-            )}
-            {!selectedSite && (
-              <p className="text-red-600 mt-2">⚠️ Please refresh the page to load site data</p>
-            )}
-          </div>
-
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Upload Protocol Document</h2>
-          <p className="text-gray-600 mb-8">Upload a protocol PDF to get instant AI-powered feasibility scoring</p>
-
-          <div
-            className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-green-500 transition-colors cursor-pointer bg-white"
-            onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = '.pdf';
-              input.onchange = (e: any) => {
-                const file = e.target.files[0];
-                if (file) handleFileUpload(file);
-              };
-              input.click();
-            }}
-          >
-            <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-lg font-medium text-gray-700 mb-2">
-              Drop Protocol PDF here
-            </p>
-            <p className="text-gray-500 mb-4">or click to browse</p>
-            <button className="mt-6 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-              Select Protocol PDF
-            </button>
-            <p className="text-xs text-gray-500 mt-4">
-              Supports: Clinical trial protocols, feasibility questionnaires, study synopses
-            </p>
-          </div>
-
-          {/* Backend status */}
-          <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-            <h3 className="font-medium text-gray-900 mb-2">🔌 Backend Status</h3>
-            <p className="text-sm text-gray-600">
-              Site: {selectedSite?.name || 'Not selected'}<br/>
-              EMR: {selectedSite?.emr || 'Unknown'}<br/>
-              API: {API_URL}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Processing Screen - Show while AI works
-  const ProcessingScreen = () => (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <div className="mb-8">
-          <Loader2 className="w-16 h-16 text-green-600 animate-spin mx-auto" />
-        </div>
-        <h2 className="text-2xl font-semibold text-gray-900 mb-2">AI Processing Protocol</h2>
-        <p className="text-gray-600">{processingStage}</p>
-        <p className="text-xs text-gray-500 mt-4">Using GPT-4 to extract and analyze protocol requirements...</p>
-      </div>
-    </div>
-  );
-
-  // Score Screen - Show results
-  const ScoreScreen = () => {
-    if (!assessmentData) return null;
-
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">{assessmentData.protocol_name}</h2>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setCurrentScreen('autofill')}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Review Auto-Filled Answers
-              </button>
-              <button
-                onClick={() => setCurrentScreen('whatif')}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                What-if Analysis
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Score Display */}
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-32 h-32 rounded-full bg-green-100 mb-4">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-green-600">{assessmentData.match_score}</div>
-                  <div className="text-sm text-green-700">/100</div>
-                </div>
-              </div>
-              <h3 className="text-2xl font-semibold text-gray-900">
-                {assessmentData.match_score >= 80 ? 'Strong Fit' :
-                 assessmentData.match_score >= 60 ? 'Good Fit' : 'Needs Review'}
-              </h3>
-              <p className="text-gray-600 mt-2">
-                Auto-filled {assessmentData.auto_filled_count} of {assessmentData.total_questions} fields ({assessmentData.completion_percentage}% complete)
-              </p>
-            </div>
-
-            {/* Score Breakdown */}
-            <div className="space-y-4">
-              <h4 className="font-medium text-gray-900">Score Contributors</h4>
-              {Object.entries(assessmentData.score_breakdown).map(([category, value]) => (
-                <div key={category} className="flex items-center space-x-3">
-                  <span className="text-sm text-gray-600 w-48">{category}</span>
-                  <div className="flex-1 bg-gray-200 rounded-full h-4">
-                    <div
-                      className="bg-green-600 h-4 rounded-full transition-all duration-500"
-                      style={{ width: `${value}%` }}
-                    />
-                  </div>
-                  <span className="text-sm font-medium text-gray-900 w-12">{value}%</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Flags */}
-            {assessmentData.flags && assessmentData.flags.length > 0 && (
-              <div className="mt-6 p-4 bg-yellow-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">⚠️ Flags & Gaps</h4>
-                <ul className="space-y-1">
-                  {assessmentData.flags.map((flag, idx) => (
-                    <li key={idx} className="text-sm text-yellow-800">
-                      🟡 {flag.message}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Extracted Data Preview */}
-            {assessmentData.raw_extraction && (
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">📄 Extracted Protocol Data</h4>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p>NCT ID: {assessmentData.raw_extraction.nct_id || 'Not found'}</p>
-                  <p>Phase: {assessmentData.raw_extraction.phase || 'Not specified'}</p>
-                  <p>Indication: {assessmentData.raw_extraction.indication || 'Not specified'}</p>
-                  <p>Target Enrollment: {assessmentData.raw_extraction.target_enrollment || 'Not specified'}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Auto-fill Review Screen
-  const AutofillScreen = () => {
-    const [activeTab, setActiveTab] = useState('objective');
-
-    if (!formResponses) return null;
-
-    const handleSubmit = async () => {
-      try {
-        // Combine objective and subjective responses
-        const allResponses = [
-          ...formResponses.objective,
-          ...formResponses.subjective.map((item: FormResponse) => ({
-            ...item,
-            value: subjectiveAnswers[item.key] || item.value
-          }))
-        ];
-
-        // Save to backend
-        if (assessmentData) {
-          await api.updateResponses(assessmentData.assessment_id, allResponses);
-        }
-
-        setCurrentScreen('submit');
-      } catch (error) {
-        console.error('Error submitting assessment:', error);
-        setError('Failed to submit assessment');
-      }
-    };
-
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button onClick={() => setCurrentScreen('score')} className="text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <h2 className="text-xl font-semibold text-gray-900">Review & Complete Assessment</h2>
-            </div>
+      {/* Tabs */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="border-b border-gray-200">
+          <div className="flex">
             <button
-              onClick={handleSubmit}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              onClick={() => setActiveTab('objective')}
+              className={`px-6 py-3 font-medium ${
+                activeTab === 'objective'
+                  ? 'text-green-600 border-b-2 border-green-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
             >
-              Submit Assessment
+              <CheckSquare className="inline w-4 h-4 mr-2" />
+              Objective ({objectiveResponses.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('subjective')}
+              className={`px-6 py-3 font-medium ${
+                activeTab === 'subjective'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Edit3 className="inline w-4 h-4 mr-2" />
+              Subjective ({subjectiveResponses.length})
             </button>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="bg-white rounded-lg shadow">
-            <div className="border-b border-gray-200">
-              <nav className="flex -mb-px">
-                <button
-                  onClick={() => setActiveTab('objective')}
-                  className={`py-3 px-6 font-medium text-sm ${
-                    activeTab === 'objective'
-                      ? 'border-b-2 border-green-600 text-green-600'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Objective (Auto-filled) ✅
-                </button>
-                <button
-                  onClick={() => setActiveTab('subjective')}
-                  className={`py-3 px-6 font-medium text-sm ${
-                    activeTab === 'subjective'
-                      ? 'border-b-2 border-green-600 text-green-600'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Subjective (Needs Input) ❗
-                </button>
-              </nav>
-            </div>
+        {/* Responses list */}
+        <div className="p-6">
+          <div className="space-y-6">
+            {activeResponses.map((response: any) => (
+              <div key={response.id} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <p className="text-base font-semibold text-gray-900 flex-1 leading-relaxed">
+                    {response.text}
+                  </p>
+                  {response.confidence && (
+                    <span className="ml-3 text-xs font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                      {(response.confidence * 100).toFixed(0)}% confidence
+                    </span>
+                  )}
+                </div>
 
-            <div className="p-6">
-              {activeTab === 'objective' ? (
-                <div className="space-y-4">
-                  {formResponses.objective.length > 0 ? (
-                    formResponses.objective.map((item: FormResponse) => (
-                      <div key={item.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-700">{item.question}</p>
-                          <p className="text-gray-900 mt-1">{item.value}</p>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {item.confidence && (
-                            <span className="text-xs text-gray-500">{item.confidence}% confidence</span>
-                          )}
-                          {item.locked && <span className="text-gray-400">🔒</span>}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-500">No auto-filled fields available</p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {formResponses.subjective.length > 0 ? (
-                    formResponses.subjective.map((item: FormResponse) => (
-                      <div key={item.key}>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          {item.question} {item.required && <span className="text-red-500">*</span>}
-                        </label>
-                        <textarea
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                          rows={4}
-                          placeholder="Enter your response..."
-                          value={subjectiveAnswers[item.key] || ''}
-                          onChange={(e) => setSubjectiveAnswers({
-                            ...subjectiveAnswers,
-                            [item.key]: e.target.value
-                          })}
-                        />
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-500">No subjective fields require input</p>
-                  )}
-                </div>
-              )}
-            </div>
+                {activeTab === 'objective' ? (
+                  <div className="bg-green-50 border border-green-100 px-4 py-3 rounded-md">
+                    <p className="text-sm text-gray-900 font-medium">{response.response || 'No data available'}</p>
+                    <p className="text-xs text-gray-600 mt-2">
+                      <span className="font-medium">Source:</span> {response.source}
+                      {response.confidence && response.confidence > 0 && (
+                        <span className="ml-2">• {Math.round(response.confidence * 100)}% confidence</span>
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <textarea
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    rows={3}
+                    placeholder="Enter your response..."
+                    value={editedResponses[response.id] || response.response || ''}
+                    onChange={(e) => onEdit(response.id, e.target.value)}
+                  />
+                )}
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
-    );
-  };
 
-  // What-If Analysis Screen
-  const WhatIfScreen = () => {
-    const [crcFte, setCrcFte] = useState(1.5);
-    const [mriHours, setMriHours] = useState(8);
-    const [recruitChannels, setRecruitChannels] = useState({ ehr: true, community: true, social: false });
-
-    useEffect(() => {
-      if (!assessmentData) return;
-
-      // Calculate new score based on changes
-      let newScore = assessmentData.match_score;
-      if (crcFte > 1.5) newScore += Math.round((crcFte - 1.5) * 8);
-      if (mriHours > 8) newScore += Math.round((mriHours - 8) * 0.375);
-      if (recruitChannels.social) newScore += 2;
-      setWhatIfScore(Math.min(100, newScore));
-    }, [crcFte, mriHours, recruitChannels, assessmentData]);
-
-    if (!assessmentData) return null;
-
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button onClick={() => setCurrentScreen('score')} className="text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="w-5 h-5" />
+          {activeTab === 'subjective' && (
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={onSubmit}
+                className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 flex items-center"
+              >
+                Continue to Submit
+                <ChevronRight className="w-4 h-4 ml-2" />
               </button>
-              <h2 className="text-xl font-semibold text-gray-900">What-If Scenario Analysis</h2>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Submit View
+function SubmitView({ survey, onSubmit, onBack }: any) {
+  const [sponsorEmail, setSponsorEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    await onSubmit(sponsorEmail);
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <h2 className="text-2xl font-bold mb-6">Submit Survey</h2>
+
+      <div className="bg-white p-6 rounded-lg shadow">
+        <form onSubmit={handleSubmit}>
+          <div className="mb-6">
+            <h3 className="font-semibold mb-3">Survey Summary</h3>
+            <div className="bg-gray-50 p-4 rounded space-y-2 text-sm">
+              <p><strong>Study:</strong> {survey.study_name}</p>
+              <p><strong>Sponsor:</strong> {survey.sponsor_name}</p>
+              <p><strong>Feasibility Score:</strong> {survey.feasibility_score}/100</p>
+              <p><strong>Auto-completion:</strong> {survey.completion_percentage?.toFixed(0)}%</p>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Sponsor Email Address
+            </label>
+            <input
+              type="email"
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="sponsor@example.com"
+              value={sponsorEmail}
+              onChange={(e) => setSponsorEmail(e.target.value)}
+            />
+            <p className="text-xs text-gray-600 mt-1">
+              The completed survey will be sent to this email with PDF and Excel attachments
+            </p>
+          </div>
+
+          <div className="mb-6">
+            <h4 className="font-semibold text-gray-900 mb-3">What will be sent:</h4>
+            <ul className="space-y-2 text-sm text-gray-800">
+              <li className="flex items-center">
+                <FileText className="w-4 h-4 mr-2 text-red-600" />
+                PDF Report with all responses
+              </li>
+              <li className="flex items-center">
+                <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />
+                Excel spreadsheet for analysis
+              </li>
+              <li className="flex items-center">
+                <BarChart3 className="w-4 h-4 mr-2 text-blue-600" />
+                Feasibility score breakdown
+              </li>
+            </ul>
+          </div>
+
+          <div className="flex justify-between">
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+            >
+              Back to Review
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 flex items-center disabled:opacity-50"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="animate-spin w-4 h-4 mr-2" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Submit to Sponsor
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Submitted View
+function SubmittedView({ survey, onReturnToInbox }: any) {
+  return (
+    <div className="max-w-2xl mx-auto text-center">
+      <div className="bg-white p-12 rounded-lg shadow">
+        <CheckCircle className="w-20 h-20 mx-auto text-green-500 mb-6" />
+
+        <h2 className="text-2xl font-bold mb-4">Survey Submitted Successfully!</h2>
+
+        <p className="text-gray-600 mb-6">
+          The completed feasibility assessment for <strong>{survey.study_name}</strong> has been sent to the sponsor.
+        </p>
+
+        <div className="bg-gray-50 p-6 rounded mb-6">
+          <h3 className="font-semibold mb-4">Download Copies</h3>
+          <div className="flex justify-center space-x-4">
+            <a
+              href={`${API_URL}${survey.pdf_download}`}
+              className="flex items-center px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              PDF Report
+            </a>
+            <a
+              href={`${API_URL}${survey.excel_download}`}
+              className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Excel Export
+            </a>
+          </div>
+        </div>
+
+        <div className="space-y-3 mb-8">
+          <div className="flex items-center justify-center text-sm text-gray-600">
+            <Clock className="w-4 h-4 mr-2" />
+            Submitted at {new Date().toLocaleString()}
+          </div>
+          <div className="flex items-center justify-center text-sm text-gray-600">
+            <Mail className="w-4 h-4 mr-2" />
+            Sent to sponsor via email
+          </div>
+        </div>
+
+        <button
+          onClick={onReturnToInbox}
+          className="bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-700"
+        >
+          Return to Inbox
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Dashboard View Component
+interface DashboardViewProps {
+  siteId: number;
+  onNavigateToInbox: () => void;
+}
+
+function DashboardView({ siteId, onNavigateToInbox }: DashboardViewProps) {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadDashboardStats();
+  }, [siteId]);
+
+  const loadDashboardStats = async () => {
+    try {
+      // In production, this would be a real endpoint
+      // For now, we'll calculate from survey data
+      const inboxData = await api.getInbox(siteId);
+
+      const surveys = inboxData.surveys || [];
+
+      // Calculate statistics
+      const totalSurveys = surveys.length;
+      const submittedSurveys = surveys.filter((s: any) => s.status === 'submitted').length;
+      const pendingSurveys = surveys.filter((s: any) => s.status === 'pending').length;
+      const avgFeasibilityScore = surveys
+        .filter((s: any) => s.feasibility_score)
+        .reduce((acc: number, s: any) => acc + s.feasibility_score, 0) /
+        (surveys.filter((s: any) => s.feasibility_score).length || 1);
+
+      const avgCompletionRate = surveys
+        .filter((s: any) => s.completion_percentage)
+        .reduce((acc: number, s: any) => acc + s.completion_percentage, 0) /
+        (surveys.filter((s: any) => s.completion_percentage).length || 1);
+
+      // Time savings calculation (45 minutes per survey with >50% completion)
+      const timeSaved = surveys
+        .filter((s: any) => s.completion_percentage > 50)
+        .length * 45;
+
+      setStats({
+        totalSurveys,
+        submittedSurveys,
+        pendingSurveys,
+        avgFeasibilityScore: Math.round(avgFeasibilityScore),
+        avgCompletionRate: Math.round(avgCompletionRate),
+        timeSaved,
+        recentSurveys: surveys.slice(0, 5)
+      });
+    } catch (error) {
+      console.error('Error loading dashboard stats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="animate-spin w-8 h-8 text-green-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-8 rounded-lg shadow-lg">
+        <h1 className="text-3xl font-bold mb-2">SiteSync Dashboard</h1>
+        <p className="text-green-100">
+          Transforming clinical research feasibility assessments through AI
+        </p>
+      </div>
+
+      {/* Key Metrics Grid */}
+      <div className="grid md:grid-cols-4 gap-6">
+        <MetricCard
+          icon={<Clock className="w-6 h-6" />}
+          value={`${stats?.timeSaved || 0} min`}
+          label="Time Saved"
+          color="text-blue-600"
+          bgColor="bg-blue-50"
+        />
+        <MetricCard
+          icon={<Target className="w-6 h-6" />}
+          value={`${stats?.avgFeasibilityScore || 0}/100`}
+          label="Avg. Feasibility Score"
+          color="text-green-600"
+          bgColor="bg-green-50"
+        />
+        <MetricCard
+          icon={<TrendingUp className="w-6 h-6" />}
+          value={`${stats?.avgCompletionRate || 0}%`}
+          label="Auto-completion Rate"
+          color="text-purple-600"
+          bgColor="bg-purple-50"
+        />
+        <MetricCard
+          icon={<CheckCircle className="w-6 h-6" />}
+          value={`${stats?.submittedSurveys || 0}/${stats?.totalSurveys || 0}`}
+          label="Surveys Completed"
+          color="text-orange-600"
+          bgColor="bg-orange-50"
+        />
+      </div>
+
+      {/* Efficiency Comparison */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h2 className="text-xl font-bold mb-4">Efficiency Gains</h2>
+        <div className="grid md:grid-cols-2 gap-8">
+          <div>
+            <h3 className="font-semibold text-gray-700 mb-3">Traditional Process</h3>
+            <div className="space-y-3">
+              <ProcessStep
+                time="15 min"
+                task="Manual protocol review"
+                icon={<FileText className="w-4 h-4" />}
+              />
+              <ProcessStep
+                time="20 min"
+                task="Site capability matching"
+                icon={<Users className="w-4 h-4" />}
+              />
+              <ProcessStep
+                time="25 min"
+                task="Form completion"
+                icon={<ClipboardCheck className="w-4 h-4" />}
+              />
+              <div className="pt-3 border-t">
+                <span className="text-lg font-bold text-red-600">Total: 60 minutes</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-gray-700 mb-3">SiteSync Process</h3>
+            <div className="space-y-3">
+              <ProcessStep
+                time="1 min"
+                task="Upload protocol & survey"
+                icon={<Upload className="w-4 h-4" />}
+                automated
+              />
+              <ProcessStep
+                time="2 min"
+                task="AI extraction & scoring"
+                icon={<Zap className="w-4 h-4" />}
+                automated
+              />
+              <ProcessStep
+                time="12 min"
+                task="Review & complete subjective"
+                icon={<Edit3 className="w-4 h-4" />}
+              />
+              <div className="pt-3 border-t">
+                <span className="text-lg font-bold text-green-600">Total: 15 minutes</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            {/* Score Comparison */}
-            <div className="grid grid-cols-2 gap-8 mb-8">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-600">{assessmentData.match_score}/100</div>
-                <p className="text-sm text-gray-500">Current Score</p>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-600">
-                  {whatIfScore}/100
-                  {whatIfScore > assessmentData.match_score && (
-                    <span className="text-lg ml-1">⬆️ +{whatIfScore - assessmentData.match_score}</span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-500">Adjusted Score</p>
-              </div>
-            </div>
-
-            {/* Adjustment Controls */}
-            <div className="space-y-6">
-              <h3 className="font-medium text-gray-900">Adjust Resources</h3>
-
-              {/* CRC FTE */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">CRC FTE</label>
-                  <span className="text-sm text-gray-900">{crcFte.toFixed(1)} FTE</span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="3"
-                  step="0.5"
-                  value={crcFte}
-                  onChange={(e) => setCrcFte(parseFloat(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* MRI Hours */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">MRI Access Hours</label>
-                  <span className="text-sm text-gray-900">{mriHours} hours/day</span>
-                </div>
-                <input
-                  type="range"
-                  min="4"
-                  max="16"
-                  step="2"
-                  value={mriHours}
-                  onChange={(e) => setMriHours(parseInt(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              {/* Recruitment Channels */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">Recruitment Channels</label>
-                <div className="space-y-2">
-                  {Object.entries({ ehr: 'EHR', community: 'Community', social: 'Social Media' }).map(([key, label]) => (
-                    <label key={key} className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={recruitChannels[key as keyof typeof recruitChannels]}
-                        onChange={(e) => setRecruitChannels({
-                          ...recruitChannels,
-                          [key]: e.target.checked
-                        })}
-                        className="mr-2"
-                      />
-                      <span className="text-sm text-gray-700">{label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Rationale */}
-            {whatIfScore > assessmentData.match_score && (
-              <div className="mt-6 p-4 bg-green-50 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Improvement Rationale</h4>
-                <p className="text-sm text-gray-700">
-                  Adding {(crcFte - 1.5).toFixed(1)} FTE CRC during startup phase increases bandwidth score.
-                  Extended MRI hours reduce scheduling conflicts, improving patient access.
-                  {recruitChannels.social && 'Social media recruitment expands reach beyond traditional channels.'}
-                </p>
-              </div>
-            )}
+        <div className="mt-6 bg-green-50 p-4 rounded">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-green-800">Time Savings</span>
+            <span className="text-2xl font-bold text-green-600">75% Reduction</span>
           </div>
         </div>
       </div>
-    );
-  };
 
-  // Submit Success Screen
-  const SubmitScreen = () => (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <div className="bg-white rounded-lg shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-green-600" />
-          </div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Assessment Complete!</h2>
-          <p className="text-gray-600 mb-8">
-            Your feasibility assessment has been saved and is ready for submission
-          </p>
-
-          {/* Results Summary */}
-          <div className="border-t border-b border-gray-200 py-4 mb-6">
-            <h3 className="font-medium text-gray-900 mb-4">Assessment Summary</h3>
-            <div className="text-left space-y-2">
-              <p className="text-sm text-gray-600">
-                <span className="font-medium">Protocol:</span> {assessmentData?.protocol_name}
-              </p>
-              <p className="text-sm text-gray-600">
-                <span className="font-medium">Match Score:</span> {assessmentData?.match_score}/100
-              </p>
-              <p className="text-sm text-gray-600">
-                <span className="font-medium">Auto-completion:</span> {assessmentData?.completion_percentage}%
-              </p>
-              <p className="text-sm text-gray-600">
-                <span className="font-medium">Time Saved:</span> ~45 minutes
-              </p>
-            </div>
-          </div>
-
-          {/* Export Options */}
-          <div className="flex justify-center space-x-4 mb-6">
-            <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-              <FileText className="w-4 h-4" />
-              <span>Download PDF</span>
-            </button>
-            <button className="flex items-center space-x-2 px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-              <BarChart3 className="w-4 h-4" />
-              <span>Export Excel</span>
-            </button>
-          </div>
-
+      {/* Recent Activity */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Recent Surveys</h2>
           <button
-            onClick={() => {
-              setCurrentScreen('inbox');
-              setAssessmentData(null);
-              setFormResponses(null);
-            }}
-            className="mt-4 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            onClick={onNavigateToInbox}
+            className="text-green-600 hover:text-green-700 text-sm font-medium"
           >
-            Return to Inbox
+            View All →
           </button>
         </div>
+
+        <div className="space-y-3">
+          {stats?.recentSurveys?.map((survey: any) => (
+            <div key={survey.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded">
+              <div className="flex-1">
+                <p className="font-medium">{survey.study_name}</p>
+                <p className="text-sm text-gray-600">{survey.sponsor_name}</p>
+              </div>
+              <div className="flex items-center space-x-4">
+                {survey.feasibility_score && (
+                  <span className="text-lg font-semibold text-green-600">
+                    {survey.feasibility_score}/100
+                  </span>
+                )}
+                <StatusBadge status={survey.status} />
+              </div>
+            </div>
+          ))}
+
+          {(!stats?.recentSurveys || stats.recentSurveys.length === 0) && (
+            <p className="text-center text-gray-500 py-8">No surveys yet</p>
+          )}
+        </div>
+      </div>
+
+      {/* Value Proposition */}
+      <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-lg">
+        <h2 className="text-xl font-bold mb-4">Why SiteSync?</h2>
+        <div className="grid md:grid-cols-3 gap-6">
+          <ValueProp
+            icon={<Zap className="w-8 h-8 text-yellow-500" />}
+            title="AI-Powered"
+            description="GPT-4 extracts protocol requirements and auto-fills 70%+ of questions"
+          />
+          <ValueProp
+            icon={<Shield className="w-8 h-8 text-blue-500" />}
+            title="Accuracy"
+            description="Confidence scoring and source attribution for every response"
+          />
+          <ValueProp
+            icon={<Award className="w-8 h-8 text-green-500" />}
+            title="Professional"
+            description="PDF and Excel exports ready for sponsor submission"
+          />
+        </div>
       </div>
     </div>
   );
+}
 
-  // Main app render
+// Helper Components
+function MetricCard({ icon, value, label, color, bgColor }: any) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      {currentScreen === 'inbox' && <InboxScreen />}
-      {currentScreen === 'intake' && <IntakeScreen />}
-      {currentScreen === 'processing' && <ProcessingScreen />}
-      {currentScreen === 'score' && <ScoreScreen />}
-      {currentScreen === 'autofill' && <AutofillScreen />}
-      {currentScreen === 'whatif' && <WhatIfScreen />}
-      {currentScreen === 'submit' && <SubmitScreen />}
+    <div className="bg-white p-6 rounded-lg shadow">
+      <div className={`inline-flex p-3 rounded-lg ${bgColor} ${color} mb-3`}>
+        {icon}
+      </div>
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+      <p className="text-sm text-gray-600 mt-1">{label}</p>
+    </div>
+  );
+}
+
+function ProcessStep({ time, task, icon, automated = false }: any) {
+  return (
+    <div className="flex items-center space-x-3">
+      <div className={`p-2 rounded ${automated ? 'bg-green-100' : 'bg-gray-100'}`}>
+        {icon}
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-medium">{task}</p>
+        {automated && <span className="text-xs text-green-600">Automated</span>}
+      </div>
+      <span className="text-sm text-gray-500">{time}</span>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: any) {
+  const config = {
+    submitted: { bg: 'bg-green-100', text: 'text-green-800' },
+    autofilled: { bg: 'bg-blue-100', text: 'text-blue-800' },
+    processing: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+    pending: { bg: 'bg-gray-100', text: 'text-gray-800' }
+  }[status] || { bg: 'bg-gray-100', text: 'text-gray-800' };
+
+  return (
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+      {status}
+    </span>
+  );
+}
+
+function ValueProp({ icon, title, description }: any) {
+  return (
+    <div className="text-center">
+      <div className="inline-flex p-4 rounded-full bg-white shadow-md mb-3">
+        {icon}
+      </div>
+      <h3 className="font-semibold mb-1">{title}</h3>
+      <p className="text-sm text-gray-600">{description}</p>
+    </div>
+  );
+}
+
+// Site Profile View Component
+function SiteProfileView({ profile, onUpdate, onBack }: any) {
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        <span className="ml-2 text-gray-600">Loading site profile...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={onBack}
+            className="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{profile.name}</h1>
+            <p className="text-gray-600">Comprehensive Clinical Research Center Profile</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold text-green-600">{profile.metadata?.profile_completeness || 100}%</div>
+          <p className="text-sm text-gray-600">Profile Complete</p>
+        </div>
+      </div>
+
+      <div className="grid gap-6">
+        {/* Population Capabilities */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center text-blue-600">
+            <Users className="w-6 h-6 mr-3" />
+            Population Capabilities
+          </h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-blue-800 mb-2">Annual Patient Volume</h3>
+              <p className="text-2xl font-bold text-blue-600">
+                {profile.population_capabilities?.annual_patient_volume?.toLocaleString() || '15,000'}
+              </p>
+              <p className="text-sm text-blue-700">patients per year</p>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-green-800 mb-2">Age Groups</h3>
+              <div className="flex flex-wrap gap-1">
+                {(profile.population_capabilities?.age_groups_treated || ['Pediatric', 'Adult', 'Geriatric']).map((group: string, idx: number) => (
+                  <span key={idx} className="px-2 py-1 bg-green-200 text-green-800 rounded text-xs">
+                    {group}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-purple-800 mb-2">Common Conditions</h3>
+              <div className="space-y-1">
+                {(profile.population_capabilities?.common_health_conditions || ['Diabetes', 'Hypertension', 'Cardiovascular Disease']).slice(0, 3).map((condition: string, idx: number) => (
+                  <p key={idx} className="text-sm text-purple-700">• {condition}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 p-3 bg-gray-50 rounded">
+            <p className="text-sm text-gray-700">
+              <strong>Special Populations:</strong> {profile.population_capabilities?.special_populations || 'Diverse urban population; ~30% elderly, 20% pediatric patients'}
+            </p>
+          </div>
+        </div>
+
+        {/* Staff & Experience */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center text-green-600">
+            <Users className="w-6 h-6 mr-3" />
+            Staff & Experience
+          </h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-green-800 mb-2">Principal Investigators</h3>
+              <p className="text-2xl font-bold text-green-600">
+                {profile.staff_and_experience?.investigators?.count || 3}
+              </p>
+              <p className="text-sm text-green-700">
+                Avg {profile.staff_and_experience?.investigators?.average_years_experience || 12} years experience
+              </p>
+              <div className="mt-2">
+                {(profile.staff_and_experience?.investigators?.specialties || ['Cardiology', 'Oncology']).map((specialty: string, idx: number) => (
+                  <span key={idx} className="inline-block px-2 py-1 bg-green-200 text-green-800 rounded text-xs mr-1">
+                    {specialty}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-blue-800 mb-2">Study Coordinators</h3>
+              <p className="text-2xl font-bold text-blue-600">
+                {profile.staff_and_experience?.coordinators?.count || 5}
+              </p>
+              <p className="text-sm text-blue-700">
+                Avg {profile.staff_and_experience?.coordinators?.average_years_experience || 6} years experience
+              </p>
+              <div className="mt-2">
+                {(profile.staff_and_experience?.coordinators?.certifications || ['2 CCRP (ACRP)', '1 CCRC (SoCRA)']).map((cert: string, idx: number) => (
+                  <p key={idx} className="text-xs text-blue-700">• {cert}</p>
+                ))}
+              </div>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-purple-800 mb-2">Other Research Staff</h3>
+              <div className="space-y-1">
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.research_nurses || 2} Research Nurses</p>
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.pharmacist || 1} Pharmacist</p>
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.lab_technician || 1} Lab Technician</p>
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.regulatory_specialist || 1} Regulatory Specialist</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Equipment & Facilities */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center text-purple-600">
+            <Sliders className="w-6 h-6 mr-3" />
+            Equipment & Facilities
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-3">Imaging Equipment</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {(profile.facilities_and_equipment?.imaging || ['X-Ray', 'Ultrasound', 'CT (64-slice)', 'MRI (1.5T)', 'DEXA', 'ECG']).map((equipment: string, idx: number) => (
+                  <div key={idx} className="flex items-center p-2 bg-purple-50 rounded">
+                    <CheckCircle className="w-4 h-4 text-purple-600 mr-2" />
+                    <span className="text-sm text-purple-800">{equipment}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-3">Laboratory Capabilities</h3>
+              <div className="space-y-2">
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                  <span className="text-sm">On-site Clinical Lab (CLIA Certified)</span>
+                </div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                  <span className="text-sm">-20°C and -80°C Freezers Available</span>
+                </div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                  <span className="text-sm">Temperature Monitoring & Backup Power</span>
+                </div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
+                  <span className="text-sm">Refrigerated Centrifuge Available</span>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="text-center p-2 bg-blue-50 rounded">
+                  <p className="text-lg font-bold text-blue-600">{profile.facilities_and_equipment?.procedure_rooms || 4}</p>
+                  <p className="text-xs text-blue-700">Procedure Rooms</p>
+                </div>
+                <div className="text-center p-2 bg-green-50 rounded">
+                  <p className="text-lg font-bold text-green-600">{profile.facilities_and_equipment?.infusion_chairs || 4}</p>
+                  <p className="text-xs text-green-700">Infusion Chairs</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Performance Metrics */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center text-orange-600">
+            <BarChart3 className="w-6 h-6 mr-3" />
+            Performance Metrics
+          </h2>
+          <div className="grid md:grid-cols-4 gap-6">
+            <div className="text-center bg-orange-50 p-4 rounded-lg">
+              <p className="text-2xl font-bold text-orange-600">
+                {profile.historical_performance?.studies_conducted_last_5_years || 45}
+              </p>
+              <p className="text-sm text-orange-700">Studies (5 years)</p>
+            </div>
+            <div className="text-center bg-green-50 p-4 rounded-lg">
+              <p className="text-2xl font-bold text-green-600">
+                {profile.historical_performance?.enrollment_success_rate || '85%'}
+              </p>
+              <p className="text-sm text-green-700">Enrollment Success</p>
+            </div>
+            <div className="text-center bg-blue-50 p-4 rounded-lg">
+              <p className="text-2xl font-bold text-blue-600">
+                {profile.historical_performance?.retention_rate || '95%'}
+              </p>
+              <p className="text-sm text-blue-700">Retention Rate</p>
+            </div>
+            <div className="text-center bg-purple-50 p-4 rounded-lg">
+              <p className="text-2xl font-bold text-purple-600">
+                {profile.historical_performance?.current_active_studies || 6}
+              </p>
+              <p className="text-sm text-purple-700">Active Studies</p>
+            </div>
+          </div>
+          <div className="mt-4 grid md:grid-cols-3 gap-4">
+            <div>
+              <h4 className="font-semibold text-gray-800 mb-2">Studies by Phase</h4>
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-sm">Phase I:</span>
+                  <span className="text-sm font-medium">{profile.historical_performance?.studies_by_phase?.['Phase I'] || 2}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Phase II:</span>
+                  <span className="text-sm font-medium">{profile.historical_performance?.studies_by_phase?.['Phase II'] || 10}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Phase III:</span>
+                  <span className="text-sm font-medium">{profile.historical_performance?.studies_by_phase?.['Phase III'] || 20}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-gray-800 mb-2">Therapeutic Experience</h4>
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-sm">Cardiology:</span>
+                  <span className="text-sm font-medium">{profile.historical_performance?.therapeutic_experience?.Cardiology || 10}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Oncology:</span>
+                  <span className="text-sm font-medium">{profile.historical_performance?.therapeutic_experience?.Oncology || 8}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm">Endocrinology:</span>
+                  <span className="text-sm font-medium">{profile.historical_performance?.therapeutic_experience?.Endocrinology || 5}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-gray-800 mb-2">Quality Metrics</h4>
+              <div className="space-y-1">
+                <p className="text-sm">Protocol Deviations: <span className="font-medium">{profile.historical_performance?.protocol_deviation_rate || '<2%'}</span></p>
+                <p className="text-sm">Query Resolution: <span className="font-medium">{profile.historical_performance?.average_query_resolution_time || '3 days'}</span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Sponsor Experience */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center text-teal-600">
+            <Award className="w-6 h-6 mr-3" />
+            Sponsor Experience
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-3">Sponsor Types</h3>
+              <div className="space-y-2">
+                {(profile.historical_performance?.sponsor_types_experience || ['Industry (Pharma/CRO)', 'NIH-funded', 'Investigator-Initiated']).map((type: string, idx: number) => (
+                  <div key={idx} className="flex items-center">
+                    <CheckCircle className="w-4 h-4 text-teal-600 mr-2" />
+                    <span className="text-sm">{type}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-800 mb-3">Operational Capabilities</h3>
+              <div className="space-y-2">
+                <p className="text-sm"><strong>Data Systems:</strong> {profile.operational_capabilities?.data_systems || 'CTMS (OnCore), EHR (Epic), EDC experience'}</p>
+                <p className="text-sm"><strong>Pharmacy:</strong> {profile.operational_capabilities?.pharmacy || 'On-site investigational pharmacy'}</p>
+                <p className="text-sm"><strong>Inpatient Support:</strong> {profile.operational_capabilities?.inpatient_support ? 'Available' : 'Not Available'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Compliance & Training */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold mb-4 flex items-center text-red-600">
+            <Shield className="w-6 h-6 mr-3" />
+            Compliance & Training
+          </h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-red-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-red-800 mb-2">IRB & Ethics</h3>
+              <p className="text-sm text-red-700">{profile.compliance_and_training?.IRB_review || 'Local Institutional IRB; can use central IRB (avg 4 weeks)'}</p>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-green-800 mb-2">Training & Certification</h3>
+              <div className="space-y-1">
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
+                  <span className="text-xs">GCP Certified</span>
+                </div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
+                  <span className="text-xs">HSP Training</span>
+                </div>
+                <div className="flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
+                  <span className="text-xs">IATA Certified</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h3 className="font-semibold text-blue-800 mb-2">Audit History</h3>
+              <p className="text-sm text-blue-700">{profile.compliance_and_training?.audit_history || 'FDA inspection (2019) no Form 483s; 5 sponsor audits no critical findings'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Card */}
+        <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white rounded-xl shadow-lg p-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-2">Ready for Clinical Research Excellence</h2>
+            <p className="text-green-100 mb-4">
+              With {profile.population_capabilities?.annual_patient_volume?.toLocaleString() || '15,000'} patients annually,
+              {profile.staff_and_experience?.coordinators?.count || 5} experienced coordinators, and
+              {profile.historical_performance?.studies_conducted_last_5_years || 45} studies completed over 5 years,
+              this site delivers exceptional feasibility and enrollment performance.
+            </p>
+            <div className="flex justify-center space-x-8">
+              <div className="text-center">
+                <p className="text-2xl font-bold">{profile.metadata?.profile_completeness || 100}%</p>
+                <p className="text-sm text-green-100">Profile Complete</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{profile.historical_performance?.enrollment_success_rate || '85%'}</p>
+                <p className="text-sm text-green-100">Success Rate</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{profile.historical_performance?.retention_rate || '95%'}</p>
+                <p className="text-sm text-green-100">Retention</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

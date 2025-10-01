@@ -34,7 +34,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://sitesync:sitesync_password@postgres:5432/sitesync
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       LLM_PROVIDER: openai
-      LLM_MODEL: gpt-4o-mini
+      LLM_MODEL: gpt-4o
+      LLM_FALLBACK_MODEL: gpt-4o
       LLM_TIMEOUT_SECS: 20
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: minioadmin
@@ -52,6 +53,8 @@ services:
         python -c 'from app.db import engine; from app.models import Base; Base.metadata.create_all(bind=engine); print(\"Tables created successfully\")' &&
         echo 'Creating demo data...' &&
         python scripts/create_demo_data.py &&
+        echo 'Populating comprehensive site profile...' &&
+        python scripts/populate_comprehensive_site_profile.py &&
         echo 'Starting FastAPI server...' &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
@@ -75,6 +78,8 @@ services:
     volumes:
       - ./frontend/app:/app/app
       - ./frontend/public:/app/public
+    networks:
+      - default
 
 volumes:
   postgres_data:

@@ -19,3 +19,7 @@ def get_session() -> Generator:
         yield db
     finally:
         db.close()
+
+def get_session_direct():
+    """Direct session for scripts"""
+    yield SessionLocal()

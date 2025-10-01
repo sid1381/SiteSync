@@ -1,18 +1,23 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
+from datetime import datetime
 
 class SiteCreate(BaseModel):
     name: str
-    address: Optional[str] = None
-    emr: Optional[str] = None
-    notes: Optional[str] = None
 
 class SiteOut(BaseModel):
     id: int
     name: str
-    address: Optional[str] = None
-    emr: Optional[str] = None
-    notes: Optional[str] = None
+    population_capabilities: Optional[Dict[str, Any]] = {}
+    staff_and_experience: Optional[Dict[str, Any]] = {}
+    facilities_and_equipment: Optional[Dict[str, Any]] = {}
+    operational_capabilities: Optional[Dict[str, Any]] = {}
+    historical_performance: Optional[Dict[str, Any]] = {}
+    compliance_and_training: Optional[Dict[str, Any]] = {}
+    profile_completeness: Optional[float] = 0.0
+    last_updated: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 
