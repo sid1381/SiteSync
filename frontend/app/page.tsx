@@ -1732,6 +1732,7 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
                     <span className="text-sm">{area}</span>
                   </div>
                 ))}
+              </div>
             </div>
             <div>
               <h4 className="font-semibold text-gray-800 mb-2">Quality Metrics</h4>
