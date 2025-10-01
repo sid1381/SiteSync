@@ -11,8 +11,8 @@ from openai import OpenAI
 # Set up logging
 logger = logging.getLogger(__name__)
 
-MODEL = os.getenv("LLM_MODEL", "gpt-4o")
-FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gpt-4o")
+MODEL = os.getenv("LLM_MODEL", "gpt-5-mini")
+FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gpt-5-mini")
 
 class UnifiedOpenAIClient:
     """
@@ -70,13 +70,13 @@ class UnifiedOpenAIClient:
             # Responses API not available or failed
             logger.warning(f"Responses API failed ({type(e).__name__}: {e}), falling back to Chat Completions API")
 
-        # Fallback to Chat Completions API (always use gpt-4o for quality)
+        # Fallback to Chat Completions API (always use configured fallback model)
         messages = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": prompt})
 
-        # Use configured fallback model (defaults to gpt-4o for quality extraction)
+        # Use configured fallback model (defaults to gpt-5-mini for quality and rate limits)
         fallback_model = FALLBACK_MODEL
 
         logger.info(f"Using Chat Completions API with model: {fallback_model}")
