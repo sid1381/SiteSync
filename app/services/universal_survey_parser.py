@@ -1262,6 +1262,14 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
             r'does.*site.*have.*required.*equipment',
             r'can.*site.*provide.*required.*staff',
             r'are.*facilities.*adequate',
+            # Realistic/feasibility questions - factual comparisons of protocol vs site
+            r'is.*number.*participants.*realistic',  # Compare enrollment target vs patient pool
+            r'is.*enrollment.*realistic',             # Compare enrollment numbers
+            r'are.*additional.*specialists',          # Compare specialty requirements vs site staff
+            r'do.*visits.*seem.*complex',             # Protocol visit schedule is factual data
+            r'is.*duration.*realistic',               # Protocol duration is factual
+            r'is.*study.*duration.*realistic',        # Protocol duration comparison
+            r'visits.*complex.*time',                 # Visit complexity from protocol data
         ]
 
         for pattern in obvious_objective_patterns:
