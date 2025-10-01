@@ -1211,6 +1211,7 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
         """
         Categorize question as objective (auto-fillable) or subjective using AI-based analysis
         """
+        logger.info(f"🔍 Categorizing question: {question_text[:80]}")
         try:
             prompt = f"""Categorize this question as OBJECTIVE or SUBJECTIVE:
 
@@ -1238,6 +1239,7 @@ Examples:
 
 Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
 
+            logger.info(f"🤖 Calling AI categorization for: {question_text[:60]}")
             result = self.openai_client.create_completion(
                 prompt=prompt,
                 system_message="You are a question categorization expert. Categorize questions as OBJECTIVE (factual, auto-answerable from site data) or SUBJECTIVE (requires human judgment).",
@@ -1245,24 +1247,28 @@ Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
                 max_tokens=10
             ).strip().upper()
 
+            logger.info(f"✅ AI categorization result: '{result}' for question: {question_text[:60]}")
+
             if "OBJECTIVE" in result:
-                logger.debug(f"AI categorized as OBJECTIVE: {question_text[:60]}")
+                logger.info(f"✓ OBJECTIVE: {question_text[:60]}")
                 return True, 0.9
             elif "SUBJECTIVE" in result:
-                logger.debug(f"AI categorized as SUBJECTIVE: {question_text[:60]}")
+                logger.info(f"✓ SUBJECTIVE: {question_text[:60]}")
                 return False, 0.9
             else:
-                logger.warning(f"AI categorization unclear: {result}, defaulting to keyword-based")
+                logger.warning(f"⚠️ AI categorization unclear: '{result}', using fallback for: {question_text[:60]}")
                 return self._fallback_categorize_question(question_text)
 
         except Exception as e:
-            logger.warning(f"AI categorization failed: {e}, using fallback")
+            logger.error(f"❌ AI categorization FAILED: {e}, using fallback for: {question_text[:60]}")
+            logger.exception(e)  # Full stack trace
             return self._fallback_categorize_question(question_text)
 
     def _fallback_categorize_question(self, question_text: str) -> Tuple[bool, float]:
         """
         Fallback keyword-based categorization when AI is unavailable
         """
+        logger.info(f"🔄 Using FALLBACK categorization for: {question_text[:60]}")
         text_lower = question_text.lower()
 
         # Calculate objective score
@@ -1315,6 +1321,9 @@ Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
         objective_ratio = objective_score / total_score
         is_objective = objective_ratio > 0.5
         confidence = min(0.95, max(0.6, objective_ratio if is_objective else (1 - objective_ratio)))
+
+        category = "OBJECTIVE" if is_objective else "SUBJECTIVE"
+        logger.info(f"📊 Fallback result: {category} (ratio: {objective_ratio:.2f}, obj_score: {objective_score}, subj_score: {subjective_score}) for: {question_text[:60]}")
 
         return is_objective, confidence
 
