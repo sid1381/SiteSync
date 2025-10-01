@@ -81,16 +81,24 @@ class UnifiedOpenAIClient:
 
         logger.info(f"Using Chat Completions API with model: {fallback_model}")
 
+        # GPT-5 and newer models use max_completion_tokens instead of max_tokens
+        # Determine parameter name based on model
+        if fallback_model.startswith('gpt-5') or fallback_model.startswith('o1'):
+            token_param = 'max_completion_tokens'
+        else:
+            token_param = 'max_tokens'
+
         kwargs = {
             "model": fallback_model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            token_param: max_tokens,
         }
 
         if response_format:
             kwargs["response_format"] = response_format
 
+        logger.info(f"Using token parameter: {token_param}={max_tokens}")
         resp = self.client.chat.completions.create(**kwargs)
         result = resp.choices[0].message.content or ""
 

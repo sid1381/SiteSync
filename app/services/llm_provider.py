@@ -48,13 +48,22 @@ def _openai_chat(messages: List[Dict[str, str]], temperature: float = 0.2, max_t
 
     # Fallback to standard Chat Completions API (use configured fallback model)
     fallback_model = FALLBACK_MODEL
-    resp = client.chat.completions.create(
-        model=fallback_model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout=TIMEOUT,
-    )
+
+    # GPT-5 and newer models use max_completion_tokens instead of max_tokens
+    if fallback_model.startswith('gpt-5') or fallback_model.startswith('o1'):
+        token_param = 'max_completion_tokens'
+    else:
+        token_param = 'max_tokens'
+
+    kwargs = {
+        "model": fallback_model,
+        "messages": messages,
+        "temperature": temperature,
+        token_param: max_tokens,
+        "timeout": TIMEOUT,
+    }
+
+    resp = client.chat.completions.create(**kwargs)
     return resp.choices[0].message.content or ""
 
 def _local_fallback(messages: List[Dict[str, str]], **_) -> str:
