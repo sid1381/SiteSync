@@ -16,24 +16,44 @@ async def create_survey(
     db: Session = Depends(get_session)
 ):
     """Create a new survey entry in the inbox"""
-    survey = models.Survey(
-        site_id=survey_data.site_id,
-        sponsor_name=survey_data.sponsor_name,
-        study_name=survey_data.study_name,
-        study_type=survey_data.study_type,
-        nct_number=survey_data.nct_number,
-        due_date=survey_data.due_date,
-        status="pending"
-    )
-    db.add(survey)
-    db.commit()
-    db.refresh(survey)
+    try:
+        logger.info(f"📝 Creating survey: {survey_data.study_name}")
+        logger.info(f"📊 Survey data: site_id={survey_data.site_id}, sponsor={survey_data.sponsor_name}")
 
-    return {
-        "success": True,
-        "survey_id": survey.id,
-        "message": f"Survey created for {survey_data.study_name}"
-    }
+        # Verify site exists
+        site = db.get(models.Site, survey_data.site_id)
+        if not site:
+            logger.error(f"❌ Site {survey_data.site_id} not found")
+            raise HTTPException(status_code=404, detail=f"Site {survey_data.site_id} not found")
+
+        logger.info(f"✓ Site found: {site.name}")
+
+        survey = models.Survey(
+            site_id=survey_data.site_id,
+            sponsor_name=survey_data.sponsor_name,
+            study_name=survey_data.study_name,
+            study_type=survey_data.study_type,
+            nct_number=survey_data.nct_number,
+            due_date=survey_data.due_date,
+            status="pending"
+        )
+        db.add(survey)
+        db.commit()
+        db.refresh(survey)
+
+        logger.info(f"✅ Survey created successfully: ID={survey.id}")
+
+        return {
+            "success": True,
+            "survey_id": survey.id,
+            "message": f"Survey created for {survey_data.study_name}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Survey creation failed: {str(e)}")
+        logger.exception("Full exception details:")
+        raise HTTPException(status_code=500, detail=f"Survey creation failed: {str(e)}")
 
 @router.get("/inbox/{site_id}")
 async def get_inbox(site_id: int, db: Session = Depends(get_session)):
