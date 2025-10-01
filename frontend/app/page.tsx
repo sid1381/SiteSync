@@ -1538,10 +1538,10 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
               </div>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-purple-800 mb-2">Common Conditions</h3>
+              <h3 className="font-semibold text-purple-800 mb-2">Therapeutic Areas</h3>
               <div className="space-y-1">
-                {(profile.population_capabilities?.common_health_conditions || ['Diabetes', 'Hypertension', 'Cardiovascular Disease']).slice(0, 3).map((condition: string, idx: number) => (
-                  <p key={idx} className="text-sm text-purple-700">• {condition}</p>
+                {(profile.population_capabilities?.therapeutic_areas || profile.population_capabilities?.common_health_conditions || ['Gastroenterology (Hepatology)', 'Endocrinology', 'Cardiology']).slice(0, 3).map((area: string, idx: number) => (
+                  <p key={idx} className="text-sm text-purple-700">• {area}</p>
                 ))}
               </div>
             </div>
@@ -1563,14 +1563,28 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div className="bg-green-50 p-4 rounded-lg">
               <h3 className="font-semibold text-green-800 mb-2">Principal Investigators</h3>
               <p className="text-2xl font-bold text-green-600">
-                {profile.staff_and_experience?.investigators?.count || 3}
+                {(() => {
+                  const pi = profile.staff_and_experience?.principal_investigator ? 1 : 0;
+                  const subs = profile.staff_and_experience?.sub_investigators?.length || 0;
+                  const oldCount = profile.staff_and_experience?.investigators?.count || 3;
+                  return pi + subs || oldCount;
+                })()}
               </p>
               <p className="text-sm text-green-700">
-                Avg {profile.staff_and_experience?.investigators?.average_years_experience || 12} years experience
+                {profile.staff_and_experience?.principal_investigator?.name ? (
+                  <>PI: {profile.staff_and_experience.principal_investigator.name} ({profile.staff_and_experience.principal_investigator.specialty})</>
+                ) : (
+                  <>Avg {profile.staff_and_experience?.investigators?.average_years_experience || 12} years experience</>
+                )}
               </p>
               <div className="mt-2">
-                {(profile.staff_and_experience?.investigators?.specialties || ['Cardiology', 'Oncology']).map((specialty: string, idx: number) => (
-                  <span key={idx} className="inline-block px-2 py-1 bg-green-200 text-green-800 rounded text-xs mr-1">
+                {(profile.staff_and_experience?.principal_investigator?.specialty
+                  ? [profile.staff_and_experience.principal_investigator.specialty].concat(
+                      (profile.staff_and_experience?.sub_investigators || []).map((s: any) => s.specialty)
+                    )
+                  : profile.staff_and_experience?.investigators?.specialties || ['Cardiology', 'Oncology']
+                ).slice(0, 3).map((specialty: string, idx: number) => (
+                  <span key={idx} className="inline-block px-2 py-1 bg-green-200 text-green-800 rounded text-xs mr-1 mb-1">
                     {specialty}
                   </span>
                 ))}
@@ -1579,13 +1593,13 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div className="bg-blue-50 p-4 rounded-lg">
               <h3 className="font-semibold text-blue-800 mb-2">Study Coordinators</h3>
               <p className="text-2xl font-bold text-blue-600">
-                {profile.staff_and_experience?.coordinators?.count || 5}
+                {profile.staff_and_experience?.study_coordinators?.count || profile.staff_and_experience?.coordinators?.count || 4}
               </p>
               <p className="text-sm text-blue-700">
-                Avg {profile.staff_and_experience?.coordinators?.average_years_experience || 6} years experience
+                {profile.staff_and_experience?.study_coordinators?.experience || profile.staff_and_experience?.coordinators?.experience || `Avg ${profile.staff_and_experience?.coordinators?.average_years_experience || 6} years experience`}
               </p>
               <div className="mt-2">
-                {(profile.staff_and_experience?.coordinators?.certifications || ['2 CCRP (ACRP)', '1 CCRC (SoCRA)']).map((cert: string, idx: number) => (
+                {(profile.staff_and_experience?.study_coordinators?.certifications || profile.staff_and_experience?.coordinators?.certifications || ['ACRP-CCRC', 'SOCRA-CCRP']).map((cert: string, idx: number) => (
                   <p key={idx} className="text-xs text-blue-700">• {cert}</p>
                 ))}
               </div>
@@ -1593,10 +1607,10 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div className="bg-purple-50 p-4 rounded-lg">
               <h3 className="font-semibold text-purple-800 mb-2">Other Research Staff</h3>
               <div className="space-y-1">
-                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.research_nurses || 2} Research Nurses</p>
-                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.pharmacist || 1} Pharmacist</p>
-                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.lab_technician || 1} Lab Technician</p>
-                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.other_staff?.regulatory_specialist || 1} Regulatory Specialist</p>
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.research_nurses?.count || profile.staff_and_experience?.other_staff?.research_nurses || 2} Research Nurses</p>
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.pharmacist?.available ? '1' : profile.staff_and_experience?.other_staff?.pharmacist || 1} Pharmacist</p>
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.lab_technician?.available ? '1' : profile.staff_and_experience?.other_staff?.lab_technician || 1} Lab Technician</p>
+                <p className="text-sm text-purple-700">• {profile.staff_and_experience?.regulatory_specialist?.available ? '1' : profile.staff_and_experience?.other_staff?.regulatory_specialist || 1} Regulatory Specialist</p>
               </div>
             </div>
           </div>
@@ -1612,12 +1626,14 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div>
               <h3 className="font-semibold text-gray-800 mb-3">Imaging Equipment</h3>
               <div className="grid grid-cols-2 gap-2">
-                {(profile.facilities_and_equipment?.imaging || ['X-Ray', 'Ultrasound', 'CT (64-slice)', 'MRI (1.5T)', 'DEXA', 'ECG']).map((equipment: string, idx: number) => (
-                  <div key={idx} className="flex items-center p-2 bg-purple-50 rounded">
-                    <CheckCircle className="w-4 h-4 text-purple-600 mr-2" />
-                    <span className="text-sm text-purple-800">{equipment}</span>
-                  </div>
-                ))}
+                {Object.entries(profile.facilities_and_equipment?.imaging || {})
+                  .filter(([key, value]) => value === true && key !== 'notes')
+                  .map(([equipment], idx) => (
+                    <div key={idx} className="flex items-center p-2 bg-purple-50 rounded">
+                      <CheckCircle className="w-4 h-4 text-purple-600 mr-2" />
+                      <span className="text-sm text-purple-800">{equipment}</span>
+                    </div>
+                  ))}
               </div>
             </div>
             <div>
@@ -1707,19 +1723,15 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div>
               <h4 className="font-semibold text-gray-800 mb-2">Therapeutic Experience</h4>
               <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-sm">Cardiology:</span>
-                  <span className="text-sm font-medium">{profile.historical_performance?.therapeutic_experience?.Cardiology || 10}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Oncology:</span>
-                  <span className="text-sm font-medium">{profile.historical_performance?.therapeutic_experience?.Oncology || 8}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm">Endocrinology:</span>
-                  <span className="text-sm font-medium">{profile.historical_performance?.therapeutic_experience?.Endocrinology || 5}</span>
-                </div>
-              </div>
+                {(Array.isArray(profile.historical_performance?.therapeutic_experience)
+                  ? profile.historical_performance.therapeutic_experience
+                  : ['NASH', 'Type 2 Diabetes', 'Obesity', 'Cardiovascular outcomes', 'Oncology (solid tumors)', 'Infectious Disease (HCV/HIV)']
+                ).slice(0, 6).map((area: string, idx: number) => (
+                  <div key={idx} className="flex items-center">
+                    <CheckCircle className="w-3 h-3 text-blue-600 mr-2" />
+                    <span className="text-sm">{area}</span>
+                  </div>
+                ))}
             </div>
             <div>
               <h4 className="font-semibold text-gray-800 mb-2">Quality Metrics</h4>
@@ -1800,9 +1812,9 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
           <div className="text-center">
             <h2 className="text-2xl font-bold mb-2">Ready for Clinical Research Excellence</h2>
             <p className="text-green-100 mb-4">
-              With {profile.population_capabilities?.annual_patient_volume?.toLocaleString() || '15,000'} patients annually,
-              {profile.staff_and_experience?.coordinators?.count || 5} experienced coordinators, and
-              {profile.historical_performance?.studies_conducted_last_5_years || 45} studies completed over 5 years,
+              With {profile.population_capabilities?.annual_patient_volume?.toLocaleString() || '50,000'} patients annually,
+              {profile.staff_and_experience?.study_coordinators?.count || profile.staff_and_experience?.coordinators?.count || 4} experienced coordinators, and
+              {profile.historical_performance?.studies_completed_last_5_years || 45} studies completed over 5 years,
               this site delivers exceptional feasibility and enrollment performance.
             </p>
             <div className="flex justify-center space-x-8">
