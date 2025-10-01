@@ -1234,17 +1234,12 @@ SUBJECTIVE examples (requires human judgment, opinion, or cannot be auto-answere
 
 Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
 
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a question categorization expert. Categorize questions as OBJECTIVE (factual, auto-answerable from site data) or SUBJECTIVE (requires human judgment)."},
-                    {"role": "user", "content": prompt}
-                ],
+            result = self.openai_client.create_completion(
+                prompt=prompt,
+                system_message="You are a question categorization expert. Categorize questions as OBJECTIVE (factual, auto-answerable from site data) or SUBJECTIVE (requires human judgment).",
                 temperature=0.1,
                 max_tokens=10
-            )
-
-            result = response.choices[0].message.content.strip().upper()
+            ).strip().upper()
 
             if "OBJECTIVE" in result:
                 logger.debug(f"AI categorized as OBJECTIVE: {question_text[:60]}")
