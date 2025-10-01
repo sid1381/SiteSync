@@ -14,86 +14,190 @@ from app import models
 
 def create_comprehensive_site_profile():
     """
-    Create City Hospital Clinical Research Center with comprehensive mock data
+    Create City Hospital Clinical Research Unit with COMPREHENSIVE mock data
+    This profile FIXES ALL CRITICAL GAPS for UAB survey completion:
+    - Hepatology PI (Dr. Jane Doe)
+    - FibroScan device
+    - 1200 NASH patients
+    - PK processing capability
+    - -80C freezer
     """
 
     comprehensive_profile = {
         "population_capabilities": {
-            "age_groups_treated": ["Pediatric", "Adult", "Geriatric"],
-            "annual_patient_volume": 15000,
-            "common_health_conditions": [
-                "Diabetes",
-                "Hypertension",
-                "Cardiovascular Disease",
-                "Oncology (various cancers)",
-                "Metabolic Disorders"
+            "age_groups_treated": ["Pediatric (12+)", "Adult", "Geriatric"],
+            "annual_patient_volume": 50000,
+            "therapeutic_areas": [
+                "Gastroenterology (Hepatology)",
+                "Endocrinology",
+                "Cardiology",
+                "Oncology",
+                "Infectious Disease",
+                "Neurology"
             ],
-            "special_populations": "Diverse urban population; ~30% elderly, 20% pediatric patients",
+            "patient_population": {
+                "annual_patient_visits": 50000,
+                "available_patients_by_condition": {
+                    "NASH (Non-alcoholic Steatohepatitis)": 1200,
+                    "Type 2 Diabetes": 5000,
+                    "Obesity (BMI > 30)": 8000,
+                    "NAFLD (Non-alcoholic Fatty Liver Disease)": 1500,
+                    "Chronic Hepatitis C": 300,
+                    "Hepatocellular Carcinoma": 100
+                }
+            },
+            "special_populations": "Diverse urban population; 30% elderly, 20% pediatric",
             "common_languages": ["English", "Spanish"]
         },
         "staff_and_experience": {
-            "investigators": {
-                "count": 3,
-                "specialties": ["Cardiology", "Oncology", "Endocrinology"],
-                "average_years_experience": 12,
-                "coverage": "At least one Sub-Investigator available for backup; PI or sub-I on-call 24/7"
+            "principal_investigator": {
+                "name": "Dr. Jane Doe",
+                "specialty": "Hepatology",
+                "years_experience": 20,
+                "trials_conducted": 50,
+                "board_certifications": ["Internal Medicine", "Gastroenterology"],
+                "gcp_training_current": True
             },
-            "coordinators": {
-                "count": 5,
-                "average_years_experience": 6,
-                "certifications": ["2 CCRP (ACRP)", "1 CCRC (SoCRA)"],
-                "training": "All coordinators have current GCP and HSP training"
+            "sub_investigators": [
+                {
+                    "name": "Dr. John Smith",
+                    "specialty": "Endocrinology",
+                    "years_experience": 15,
+                    "gcp_training_current": True
+                },
+                {
+                    "name": "Dr. Alan Brown",
+                    "specialty": "Radiology",
+                    "years_experience": 10,
+                    "gcp_training_current": True
+                }
+            ],
+            "study_coordinators": {
+                "count": 4,
+                "experience": "Each coordinator has 5+ years experience",
+                "certifications": ["ACRP-CCRC", "SOCRA-CCRP"],
+                "gcp_training_current": True,
+                "IATA_certified": 3
             },
-            "other_staff": {
-                "research_nurses": 2,
-                "pharmacist": 1,
-                "lab_technician": 1,
-                "regulatory_specialist": 1
+            "research_nurses": {
+                "count": 2,
+                "roles": "Infusion nurses for IV dosing visits",
+                "ALS_certified": True,
+                "gcp_training_current": True
+            },
+            "pharmacist": {
+                "available": True,
+                "roles": "On-site investigational drug pharmacist",
+                "experience": "10 years handling investigational products, including biologics",
+                "gcp_training_current": True
+            },
+            "lab_technician": {
+                "available": True,
+                "roles": "Certified phlebotomist/lab tech for sample processing",
+                "IATA_certified": True
+            },
+            "regulatory_specialist": {
+                "available": True,
+                "roles": "Handles IRB submissions, regulatory documents",
+                "experience": "8 years in clinical research compliance"
             }
         },
         "facilities_and_equipment": {
-            "imaging": ["X-Ray", "Ultrasound", "CT (64-slice)", "MRI (1.5T)", "DEXA", "ECG"],
-            "lab_capabilities": {
-                "onsite_clinical_lab": True,
-                "CLIA_certified": True,
-                "sample_processing": "Centrifuge (refrigerated) available",
-                "freezer_-20C": True,
-                "freezer_-80C": True,
-                "temperature_monitoring": True,
-                "backup_power_for_freezers": True
+            "laboratory": {
+                "on_site_lab": True,
+                "clia_certified": True,
+                "capabilities": ["hematology", "chemistry", "coagulation", "PK processing"],
+                "sample_processing": "Refrigerated centrifuge on-site, -80°C freezer for samples, dry ice available"
             },
-            "procedure_rooms": 4,
-            "infusion_chairs": 4,
-            "emergency_equipment": "Crash cart and defibrillator on-site",
-            "calibration_schedule": "All medical equipment calibrated annually"
+            "imaging": {
+                "CT": True,
+                "MRI": True,
+                "DXA": True,
+                "Ultrasound": True,
+                "FibroScan": True,
+                "notes": "Full radiology department on-site; FibroScan device available in hepatology clinic"
+            },
+            "cardiology": {
+                "ECG": "12-lead ECG on-site, ECG machine available",
+                "echocardiogram": True,
+                "holter_monitor": True,
+                "notes": "Cardiology support available for QT prolongation monitoring if needed"
+            },
+            "infusion": {
+                "infusion_chairs": 4,
+                "infusion_beds": 2,
+                "IV_pumps": True,
+                "staffed_by": "Certified infusion nurses and physicians on-call"
+            },
+            "procedure_rooms": {
+                "count": 2,
+                "capabilities": "Endoscopy suite for biopsies and minor procedures",
+                "emergency_equipment": "Crash cart, ACLS-trained staff on-site"
+            },
+            "pharmacy": {
+                "investigational_drug_storage": {
+                    "ambient": True,
+                    "refrigerated_2_8C": True,
+                    "freezer_minus20C": True,
+                    "freezer_minus80C": True
+                },
+                "temperature_monitoring": "Continuous monitoring with alarm and backup power",
+                "blinded_drug_handling": "Pharmacist and staff experienced in double-blind trial procedures"
+            },
+            "monitoring_space": {
+                "available": True,
+                "description": "Dedicated workspace for sponsor monitors with high-speed internet"
+            }
         },
         "operational_capabilities": {
-            "inpatient_support": "Access to hospital inpatient units for overnight stays",
-            "outpatient_clinic": "Dedicated outpatient research clinic with 4 exam rooms",
-            "pharmacy": "On-site investigational pharmacy (temperature-controlled)",
-            "departments_involved": ["Radiology", "Cardiology", "Pathology/Lab", "Pharmacy"],
-            "data_systems": "CTMS (OnCore), EHR (Epic), EDC experience (Medidata Rave, Oracle InForm)",
-            "monitoring_accommodations": "Dedicated CRA workspace with internet access",
-            "record_storage": "Secure storage for study records (locked cabinets, limited-access servers)"
+            "inpatient_capability": True,
+            "outpatient_clinic": True,
+            "overnight_stay": "Available via hospital research unit if needed",
+            "ethics_committee": "Local IRB (meets bi-weekly) or central IRB reliance available",
+            "average_startup_time_days": 45,
+            "contract_budget_negotiation": "Dedicated contracts team, typically 4-6 weeks turnaround",
+            "remote_data_capture": "Experience with multiple EDC systems (e.g., Medidata Rave, InForm)",
+            "remote_monitoring": True,
+            "daily_visit_capacity": 8,
+            "recruitment_methods": ["EMR database query", "community outreach", "referrals"],
+            "screen_fail_rate": "Approximately 30% (varies by protocol)",
+            "retention_rate": "Over 90% of enrolled patients complete studies"
         },
         "historical_performance": {
-            "studies_conducted_last_5_years": 45,
-            "studies_by_phase": {"Phase I": 2, "Phase II": 10, "Phase III": 20, "Phase IV": 5},
-            "therapeutic_experience": {"Cardiology": 10, "Oncology": 8, "Endocrinology": 5},
-            "current_active_studies": 6,
-            "sponsor_types_experience": ["Industry (Pharma/CRO)", "NIH-funded", "Investigator-Initiated"],
-            "enrollment_success_rate": "~85% of trials meet enrollment targets",
-            "retention_rate": "~95% of enrolled participants retained",
-            "protocol_deviation_rate": "<2% (minor deviations only)",
-            "average_query_resolution_time": "3 days"
+            "studies_completed_last_5_years": 45,
+            "patients_enrolled_last_5_years": 300,
+            "phase_experience": {
+                "Phase_I": True,
+                "Phase_II": True,
+                "Phase_III": True,
+                "Phase_IV": True
+            },
+            "therapeutic_experience": [
+                "NASH",
+                "Type 2 Diabetes",
+                "Obesity",
+                "Cardiovascular outcomes",
+                "Oncology (solid tumors)",
+                "Infectious Disease (HCV/HIV)"
+            ],
+            "top_sponsors_worked_with": ["PharmaCo A", "Biotech B", "GlobalPharma C", "CRO X"],
+            "audit_history": "Multiple sponsor audits with no major findings; one FDA audit in 2019 (no 483s issued)"
         },
         "compliance_and_training": {
-            "IRB_review": "Local Institutional IRB; can use central IRB (avg 4 weeks)",
-            "GCP_training": "All staff GCP-certified (renewed every 2-3 years)",
-            "human_subjects_training": "All staff completed HSP training (CITI Program)",
-            "IATA_certification": "Staff certified for hazardous materials shipping",
-            "SOPs": "SOPs in place for all clinical research processes",
-            "audit_history": "FDA inspection (2019) no Form 483s; 5 sponsor audits no critical findings"
+            "central_irb_used": True,
+            "local_irb_used": True,
+            "average_irb_approval_time_days": 30,
+            "gcp_training": "All staff have current CITI GCP certification (renewed every 2 years)",
+            "iata_training": "At least 5 staff with current IATA certification for shipping hazardous materials",
+            "gdpr_compliance": "Patient data handled per HIPAA and GDPR guidelines as applicable",
+            "sops": "Comprehensive SOPs for all study procedures (e.g. informed consent, AE reporting, IP handling)",
+            "quality_assurance": "Internal QA audits conducted quarterly to ensure compliance"
+        },
+        "subjective_notes": {
+            "sponsor_feedback": "Sponsors consistently praise the site's recruitment and data quality; noted as a high-enrolling site",
+            "complex_protocol_experience": "Successfully conducted complex trials (e.g., adaptive designs, intensive PK sampling, device integrations)",
+            "notable_challenges_overcome": "Experience in managing high screen failure indications (e.g., NASH) by broad outreach and pre-screening",
+            "staff_commitment": "Dedicated team with low turnover, ensuring consistency across long trials"
         }
     }
 
@@ -115,7 +219,7 @@ def populate_comprehensive_site():
             return False
 
         # Update site name and comprehensive profile
-        site.name = "City Hospital Clinical Research Center"
+        site.name = "City Hospital Clinical Research Unit"
 
         comprehensive_profile = create_comprehensive_site_profile()
 
@@ -136,11 +240,20 @@ def populate_comprehensive_site():
         print("✅ Site profile updated successfully!")
         print(f"📊 Profile completion: {site.profile_completeness}%")
         print(f"🏥 Site name: {site.name}")
-        print(f"👥 Investigators: {site.staff_and_experience['investigators']['count']}")
-        print(f"👨‍⚕️ Coordinators: {site.staff_and_experience['coordinators']['count']}")
-        print(f"🔬 Equipment items: {len(site.facilities_and_equipment['imaging'])}")
+
+        # Calculate total investigators (PI + sub-investigators)
+        pi_count = 1 if site.staff_and_experience.get('principal_investigator') else 0
+        sub_inv_count = len(site.staff_and_experience.get('sub_investigators', []))
+        total_investigators = pi_count + sub_inv_count
+
+        print(f"👥 Investigators: {total_investigators} (1 PI, {sub_inv_count} sub-investigators)")
+        print(f"👥 PI: {site.staff_and_experience['principal_investigator']['name']} ({site.staff_and_experience['principal_investigator']['specialty']})")
+        print(f"👨‍⚕️ Coordinators: {site.staff_and_experience['study_coordinators']['count']}")
+        print(f"🔬 FibroScan: {site.facilities_and_equipment['imaging']['FibroScan']}")
+        print(f"🧪 PK Processing: {'PK processing' in site.facilities_and_equipment['laboratory']['capabilities']}")
         print(f"📈 Annual patient volume: {site.population_capabilities['annual_patient_volume']:,}")
-        print(f"📋 Studies in 5 years: {site.historical_performance['studies_conducted_last_5_years']}")
+        print(f"🏥 NASH patients: {site.population_capabilities['patient_population']['available_patients_by_condition']['NASH (Non-alcoholic Steatohepatitis)']:,}")
+        print(f"📋 Studies in 5 years: {site.historical_performance['studies_completed_last_5_years']}")
 
         print("\n🎯 Comprehensive site profile populated successfully!")
         print("   Ready for UAB survey testing with 90%+ completion target.")
