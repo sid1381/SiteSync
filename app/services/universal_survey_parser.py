@@ -1254,6 +1254,14 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
             r'does.*study.*require.*pk.*sampling',
             r'are.*procedures.*complex',
             r'is.*study.*design.*complex',
+            # Capability assessment questions - can compare protocol needs vs site capabilities
+            r'is\s+there\s+adequate\s+staff',
+            r'are\s+additional\s+specialists?\s+(needed|required)',
+            r'is\s+additional\s+training\s+(necessary|required)',
+            r'will\s+(the\s+)?coordination.*departments?',
+            r'does.*site.*have.*required.*equipment',
+            r'can.*site.*provide.*required.*staff',
+            r'are.*facilities.*adequate',
         ]
 
         for pattern in obvious_objective_patterns:

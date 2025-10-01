@@ -338,7 +338,40 @@ class AIQuestionMapper:
             # Extract what they're asking about
             asking_about = what_is_match.group(2).strip()
 
-            # Check protocol data first
+            # PRIORITY 1: Check for SPECIFIC participant count questions FIRST (most specific)
+            if 'number' in asking_about and 'participant' in asking_about:
+                enrollment_target = protocol_requirements.get('study_timeline', {}).get('enrollment_target')
+                if enrollment_target:
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='enrollment_target',
+                        mapped_value=f'{enrollment_target} patients',
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: enrollment target is {enrollment_target} patients'
+                    )
+
+            # PRIORITY 2: Check for health status questions (specific)
+            if 'health status' in asking_about or 'participant health' in asking_about:
+                indication = protocol_requirements.get('patient_population', {}).get('primary_indication')
+                inclusion = protocol_requirements.get('patient_population', {}).get('key_inclusion_criteria', [])
+                if indication:
+                    # Build comprehensive health status from indication and key criteria
+                    health_status = indication
+                    if inclusion:
+                        health_status += f" ({', '.join(inclusion[:2])})"
+                    return AIQuestionMapping(
+                        question_id=question_id,
+                        question_text=question_text,
+                        mapped_field='patient_health_status',
+                        mapped_value=health_status,
+                        confidence_score=0.95,
+                        source='protocol_direct',
+                        reasoning=f'Direct protocol data: patient health status is {health_status}'
+                    )
+
+            # Check protocol data for other questions
             if 'phase' in asking_about:
                 phase = protocol_requirements.get('study_identification', {}).get('phase')
                 if phase:
@@ -365,34 +398,37 @@ class AIQuestionMapper:
                         reasoning=f'Direct protocol data: study duration is {weeks} weeks'
                     )
 
-            if 'population' in asking_about or 'participant' in asking_about:
+            # PRIORITY 3: Population AGE questions (general population info, not count)
+            if ('population age' in asking_about or 'age range' in asking_about or
+                ('population' in asking_about and 'number' not in asking_about)):
                 indication = protocol_requirements.get('patient_population', {}).get('primary_indication')
                 age_min = protocol_requirements.get('patient_population', {}).get('age_min')
                 age_max = protocol_requirements.get('patient_population', {}).get('age_max')
-                if indication:
-                    age_str = f', ages {age_min}-{age_max}' if age_min and age_max else ''
-                    return AIQuestionMapping(
-                        question_id=question_id,
-                        question_text=question_text,
-                        mapped_field='patient_population',
-                        mapped_value=f'{indication}{age_str}',
-                        confidence_score=0.95,
-                        source='protocol_direct',
-                        reasoning=f'Direct protocol data: population is {indication}'
-                    )
-
-            if 'number' in asking_about and 'participant' in asking_about:
-                enrollment_target = protocol_requirements.get('study_timeline', {}).get('enrollment_target')
-                if enrollment_target:
-                    return AIQuestionMapping(
-                        question_id=question_id,
-                        question_text=question_text,
-                        mapped_field='enrollment_target',
-                        mapped_value=f'{enrollment_target} patients',
-                        confidence_score=0.95,
-                        source='protocol_direct',
-                        reasoning=f'Direct protocol data: enrollment target is {enrollment_target} patients'
-                    )
+                if indication or (age_min and age_max):
+                    # If asking specifically about age, return just age
+                    if 'age' in asking_about:
+                        if age_min and age_max:
+                            return AIQuestionMapping(
+                                question_id=question_id,
+                                question_text=question_text,
+                                mapped_field='population_age',
+                                mapped_value=f'{age_min}-{age_max} years',
+                                confidence_score=0.95,
+                                source='protocol_direct',
+                                reasoning=f'Direct protocol data: population age range is {age_min}-{age_max} years'
+                            )
+                    # Otherwise return indication with age
+                    elif indication:
+                        age_str = f', ages {age_min}-{age_max}' if age_min and age_max else ''
+                        return AIQuestionMapping(
+                            question_id=question_id,
+                            question_text=question_text,
+                            mapped_field='patient_population',
+                            mapped_value=f'{indication}{age_str}',
+                            confidence_score=0.95,
+                            source='protocol_direct',
+                            reasoning=f'Direct protocol data: population is {indication}'
+                        )
 
             if 'therapeutic area' in asking_about or 'indication' in asking_about:
                 therapeutic_area = protocol_requirements.get('study_identification', {}).get('therapeutic_area')
