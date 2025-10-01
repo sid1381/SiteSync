@@ -512,7 +512,26 @@ class AIQuestionMapper:
                         reasoning=f'Direct site data: {inv_count} investigators available'
                     )
 
-        # Type 3: CAPABILITY/GAP ANALYSIS QUESTIONS - Pass to AI for validation
+        # Type 3: BINARY CHOICE QUESTIONS - Choose one option
+        binary_choice_match = re.search(r'(.+)\s+or\s+(.+)\?', text_lower)
+        if binary_choice_match:
+            option1 = binary_choice_match.group(1).strip()
+            option2 = binary_choice_match.group(2).strip()
+
+            # For clinical vs academic question
+            if 'clinical' in text_lower and 'academic' in text_lower:
+                # Default to Clinical for industry-sponsored trials
+                return AIQuestionMapping(
+                    question_id=question_id,
+                    question_text=question_text,
+                    mapped_field='study_type',
+                    mapped_value='Clinical',
+                    confidence_score=0.8,
+                    source='binary_choice',
+                    reasoning='Industry-sponsored protocols are typically for clinical reasons'
+                )
+
+        # Type 4: CAPABILITY/GAP ANALYSIS QUESTIONS - Pass to AI for validation
         # Questions starting with "Do", "Does", "Is", "Are", "Can" need gap analysis
         equipment_required = protocol_requirements.get('equipment_required', [])
         staff_requirements = protocol_requirements.get('staff_requirements', [])
@@ -540,8 +559,41 @@ QUESTION TYPE DETECTION:
    - "What is the phase?" → "Phase III" (not "Yes, site can conduct Phase III")
    - "How many coordinators?" → "5 coordinators" (not "Yes, adequate staff")
 
-2. **Capability questions** (Is..., Does..., Can...) → Validate if site meets requirements
+2. **List questions** (What procedures/equipment/departments...) → Return COMMA-SEPARATED LIST
+   - "What procedures will be performed?" → "Liver biopsy, MRI-PDFF, FibroScan, ECG"
+   - "What departments are required?" → "Hepatology, Radiology, Pharmacy, Laboratory"
+   - DO NOT answer with "Yes, site can..." for list questions
+
+3. **Binary choice questions** (X or Y?) → Choose ONE option, not Yes/No
+   - "Clinical or Academic?" → "Clinical" or "Academic" (not "Yes, site meets...")
+   - Return the most appropriate option from the choices given
+
+4. **Capability questions** (Is..., Does..., Can...) → Validate if site meets requirements
    - "Is equipment available?" → "Yes, site has FibroScan" OR "No, site lacks FibroScan"
+
+CRITICAL - INVERTED QUESTION LOGIC:
+⚠️ When questions ask "Are X needed?" or "Is X necessary?", the logic is INVERTED:
+- If site LACKS the requirement → Answer "Yes, need [specific requirement]"
+- If site HAS the requirement → Answer "No, site has [capability]"
+
+CORRECT INVERTED LOGIC EXAMPLES:
+Q: "Are additional specialists needed?"
+Protocol needs: Hepatology PI
+Site has: Cardiology PI only
+✅ CORRECT: "Yes, need PI with hepatology specialization"
+❌ WRONG: "No, site lacks hepatology PI"
+
+Q: "Is additional training necessary?"
+Protocol needs: ACLS certification
+Site has: GCP only
+✅ CORRECT: "Yes, need ACLS certification training"
+❌ WRONG: "No, additional training is necessary"
+
+Q: "Are additional specialists needed?"
+Protocol needs: Hepatology PI
+Site has: Dr. Jane Doe (Hepatology PI)
+✅ CORRECT: "No, site has hepatology PI (Dr. Jane Doe)"
+❌ WRONG: "Yes, all specialists available"
 
 REQUIREMENT VALIDATION LOGIC:
 1. **Identify what type of question this is** (numeric vs capability)
@@ -610,6 +662,24 @@ Q: "Who is the sponsor?"
 Protocol: Sponsor - Novartis Pharmaceuticals
 CORRECT Answer: "Novartis Pharmaceuticals"
 WRONG Answer: "Site has worked with major sponsors" ❌
+
+Example 9 - List Questions:
+Q: "What procedures will be performed?"
+Protocol: Liver biopsy, MRI-PDFF, FibroScan, ECG, blood sampling
+CORRECT Answer: "Liver biopsy, MRI-PDFF, FibroScan, ECG, blood sampling"
+WRONG Answer: "Yes, site can perform all required procedures" ❌
+
+Example 10 - List Questions (Departments):
+Q: "What departments/services are required?"
+Protocol: Hepatology clinic, Radiology, Clinical pharmacy, Central lab
+CORRECT Answer: "Hepatology, Radiology, Pharmacy, Laboratory"
+WRONG Answer: "Yes, coordination with other departments will be required" ❌
+
+Example 11 - Binary Choice Questions:
+Q: "Is this study for Clinical Reasons or Academic?"
+Protocol: Industry-sponsored Phase II trial
+CORRECT Answer: "Clinical"
+WRONG Answer: "Yes, site meets all protocol requirements" ❌
 
 Response format - return ONLY valid JSON:
 {{

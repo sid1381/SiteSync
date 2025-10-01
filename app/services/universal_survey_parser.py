@@ -1270,6 +1270,9 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
             r'is.*duration.*realistic',               # Protocol duration is factual
             r'is.*study.*duration.*realistic',        # Protocol duration comparison
             r'visits.*complex.*time',                 # Visit complexity from protocol data
+            # Access and budget questions - factual comparisons
+            r'do.*we.*have.*access.*to.*(participant|patient).*population',  # Compare enrollment vs patient volume
+            r'will.*budget.*cover.*expenses',         # Compare protocol budget vs site costs (if budget exists)
         ]
 
         for pattern in obvious_objective_patterns:
