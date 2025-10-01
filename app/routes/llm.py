@@ -3,17 +3,10 @@ from __future__ import annotations
 import math, os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from openai import OpenAI
+from app.services.openai_client import get_openai_client
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 MODEL = os.getenv("LLM_MODEL", "gpt-5-mini")
-
-def get_client():
-    try:
-        return OpenAI()  # reads OPENAI_API_KEY from env
-    except TypeError as e:
-        # Clear error if httpx is wrong version
-        raise HTTPException(status_code=500, detail=f"LLM client init failed: {e}. Pin httpx==0.27.2")
 
 class TestIn(BaseModel):
     prompt: str
@@ -22,13 +15,12 @@ class TestIn(BaseModel):
 @router.post("/test")
 def llm_test(body: TestIn):
     try:
-        client = get_client()
-        r = client.responses.create(
-            model=MODEL,
-            input=body.prompt,
-            max_output_tokens=body.max_output_tokens,
+        client = get_openai_client()
+        text = client.chat_completion(
+            system_message="You are a helpful assistant.",
+            user_message=body.prompt,
+            max_tokens=body.max_output_tokens,
         )
-        text = getattr(r, "output_text", None) or str(r)
         return {"model": MODEL, "text": text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM error: {e}")
