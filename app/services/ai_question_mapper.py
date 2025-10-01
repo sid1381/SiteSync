@@ -766,14 +766,42 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
                 max_tokens=500
             )
 
+            # POST-PROCESSING: Fix inverted logic for "Are X needed/required?" questions
+            # AI often gets this backwards, so we enforce it here
+            mapped_value = result.get('mapped_value', '')
+            reasoning = result.get('reasoning', 'AI mapping completed')
+
+            if re.search(r'(are|is)\s+(additional\s+)?(.*?)\s+(needed|required|necessary)', question_text.lower()):
+                # Check if AI gave inverted answer: "No, site lacks..." when should be "Yes, need..."
+                if mapped_value.startswith('No, site lacks') or mapped_value.startswith('No, the site lacks'):
+                    # Extract the gap description and flip the logic
+                    gap_description = mapped_value.replace('No, site lacks', '').replace('No, the site lacks', '').strip()
+                    mapped_value = f'Yes, need {gap_description}'
+                    reasoning += ' [Inverted logic corrected post-processing]'
+                    print(f"🔄 INVERTED LOGIC FIX: Question '{question_text}' - Changed 'No, site lacks' → 'Yes, need'")
+
+                # Also check for "No, site does not have..." variant
+                elif mapped_value.startswith('No, site does not have') or mapped_value.startswith('No, the site does not have'):
+                    gap_description = mapped_value.replace('No, site does not have', '').replace('No, the site does not have', '').strip()
+                    mapped_value = f'Yes, need {gap_description}'
+                    reasoning += ' [Inverted logic corrected post-processing]'
+                    print(f"🔄 INVERTED LOGIC FIX: Question '{question_text}' - Changed 'No, site does not have' → 'Yes, need'")
+
+                # Also handle "No, additional..." variant
+                elif mapped_value.startswith('No, additional'):
+                    gap_description = mapped_value.replace('No, additional', '').strip()
+                    mapped_value = f'Yes, additional {gap_description}'
+                    reasoning += ' [Inverted logic corrected post-processing]'
+                    print(f"🔄 INVERTED LOGIC FIX: Question '{question_text}' - Changed 'No, additional' → 'Yes, additional'")
+
             return AIQuestionMapping(
                 question_id=question_id,
                 question_text=question_text,
                 mapped_field=result.get('mapped_field', 'unmapped'),
-                mapped_value=result.get('mapped_value', ''),
+                mapped_value=mapped_value,  # Use post-processed value
                 confidence_score=float(result.get('confidence_score', 0.0)),
                 source=result.get('source', 'ai_mapping'),
-                reasoning=result.get('reasoning', 'AI mapping completed')
+                reasoning=reasoning  # Use post-processed reasoning
             )
 
         except Exception as e:
