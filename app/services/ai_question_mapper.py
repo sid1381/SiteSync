@@ -246,6 +246,20 @@ class AIQuestionMapper:
         """
         question_text = question.get('text', '')
         question_id = question.get('id', '')
+        text_lower = question_text.lower()
+
+        # SPECIAL HANDLING: Time/hour estimation questions
+        if any(pattern in text_lower for pattern in ['how many hours', 'hours for', 'time required', 'estimate for']):
+            # These are numeric estimation questions, not capability questions
+            return AIQuestionMapping(
+                question_id=question_id,
+                question_text=question_text,
+                mapped_field='time_estimation',
+                mapped_value='Unable to determine specific hours without detailed protocol analysis',
+                confidence_score=0.6,
+                source='time_estimation',
+                reasoning='Time estimation question - requires detailed protocol review to provide accurate hours'
+            )
 
         # Get protocol requirements if available
         protocol_requirements = site_profile.get('protocol_requirements', {})
@@ -270,15 +284,24 @@ SITE CAPABILITIES:
 
 YOUR TASK: VALIDATE if the site can meet protocol requirements. You are a FEASIBILITY ASSESSOR, not a data retriever.
 
+QUESTION TYPE DETECTION:
+1. **Numeric questions** (What is..., How many..., How long...) → Return the NUMBER or VALUE from protocol/site
+   - "What is the phase?" → "Phase III" (not "Yes, site can conduct Phase III")
+   - "How many coordinators?" → "5 coordinators" (not "Yes, adequate staff")
+
+2. **Capability questions** (Is..., Does..., Can...) → Validate if site meets requirements
+   - "Is equipment available?" → "Yes, site has FibroScan" OR "No, site lacks FibroScan"
+
 REQUIREMENT VALIDATION LOGIC:
-1. **Identify what the protocol specifically needs** for this question
-2. **Compare protocol requirements to site capabilities**
-3. **Answer naturally and accurately**:
-   - If definitive match: "Yes, [specific reason]"
-   - If clear gap: "No, [specific gap]"
-   - If uncertain: "Unable to determine [what's missing]" or "Insufficient information to assess [requirement]"
-   - If partial match: "Partially - [what's available and what's missing]"
-4. **Do NOT force Yes/No when the answer isn't binary** - be honest about uncertainty or partial capabilities
+1. **Identify what type of question this is** (numeric vs capability)
+2. **For numeric questions**: Return the specific value from protocol or site data
+3. **For capability questions**: Compare protocol requirements to site capabilities
+4. **Answer naturally and accurately**:
+   - Numeric answer: "Phase III", "48 weeks", "30 patients", "5 coordinators"
+   - Capability match: "Yes, [specific reason]"
+   - Capability gap: "No, [specific gap]"
+   - Uncertain: "Unable to determine [what's missing]"
+   - Partial: "Partially - [what's available and what's missing]"
 
 VALIDATION EXAMPLES:
 
