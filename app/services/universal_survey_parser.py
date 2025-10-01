@@ -63,15 +63,22 @@ class UniversalSurveyParser:
         """
         Extract questions from any survey document using AI with robust fallback
         """
-        logger.info(f"Starting universal extraction for file: {filename}")
+        logger.info(f"🔍 Starting universal extraction for file: {filename}")
+        logger.info(f"📄 File content size: {len(file_content)} bytes")
 
         try:
             # First, extract raw text from document
             document_text = await self._extract_text_from_file(file_content, filename)
-            logger.debug(f"Extracted {len(document_text)} characters from {filename}")
+            logger.info(f"📝 PDF extracted text length: {len(document_text)} characters")
+            logger.info(f"📝 First 500 chars: {document_text[:500]}")
+
+            if len(document_text) < 50:
+                logger.warning(f"⚠️ Document text too short ({len(document_text)} chars), may indicate extraction failure")
 
             # Use GPT to identify and extract questions
+            logger.info("🤖 Calling AI extraction...")
             questions_data = await self._ai_extract_questions(document_text)
+            logger.info(f"🤖 AI returned {len(questions_data)} raw question objects")
 
             # Process and categorize each question (filter out None/invalid questions)
             extracted_questions = []
@@ -79,19 +86,29 @@ class UniversalSurveyParser:
                 question = self._process_question(q_data, i)
                 if question:  # Only add valid questions (filter out None)
                     extracted_questions.append(question)
+                    logger.debug(f"✓ Question {i+1}: {question.text[:60]}...")
+                else:
+                    logger.debug(f"✗ Question {i+1}: Filtered out (invalid)")
+
+            logger.info(f"📊 Questions found after processing: {len(extracted_questions)}")
 
             if extracted_questions:
                 logger.info(f"✓ AI extraction successful: {len(extracted_questions)} questions from {filename}")
                 return extracted_questions
             else:
                 # If AI extraction returns no questions, use text-based fallback
-                logger.warning("AI extraction returned no questions, using fallback extraction")
-                return self._fallback_extract_questions(document_text)
+                logger.warning("⚠️ AI extraction returned no questions, using fallback extraction")
+                fallback_questions = self._fallback_extract_questions(document_text)
+                logger.info(f"📊 Fallback extraction returned: {len(fallback_questions)} questions")
+                return fallback_questions
 
         except Exception as e:
-            logger.error(f"AI extraction failed: {e}, using fallback extraction")
+            logger.error(f"❌ AI extraction failed: {e}, using fallback extraction")
+            logger.exception("Full exception details:")
             # If all else fails, return predefined common questions
-            return self._generate_default_questions()
+            default_questions = self._generate_default_questions()
+            logger.info(f"📊 Default questions returned: {len(default_questions)} questions")
+            return default_questions
 
     def _fallback_extract_questions(self, document_text: str) -> List[ExtractedQuestion]:
         """
