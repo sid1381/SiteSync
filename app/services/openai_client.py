@@ -34,7 +34,10 @@ class UnifiedOpenAIClient:
         response_format: Optional[Dict] = None
     ) -> str:
         """
-        Create a chat completion with automatic parameter detection.
+        Create a chat completion using OpenAI SDK v2.0+
+
+        GPT-5 models require max_completion_tokens parameter.
+        GPT-4 and earlier use max_tokens.
 
         Args:
             system_message: System context for the model
@@ -51,51 +54,26 @@ class UnifiedOpenAIClient:
             {"role": "user", "content": user_message}
         ]
 
-        # If we've already detected which param works, use it
-        if self._token_param:
-            kwargs = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                self._token_param: max_tokens
-            }
-            if response_format:
-                kwargs["response_format"] = response_format
+        # GPT-5 models use max_completion_tokens, GPT-4 and earlier use max_tokens
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+        }
 
-            response = self.client.chat.completions.create(**kwargs)
-            return response.choices[0].message.content or ""
+        # Use max_completion_tokens for gpt-5 models
+        # GPT-5 models only support temperature=1 (default), not custom values
+        if "gpt-5" in self.model.lower():
+            kwargs["max_completion_tokens"] = max_tokens
+            # Don't set temperature for gpt-5 - only default (1) is supported
+        else:
+            kwargs["max_tokens"] = max_tokens
+            kwargs["temperature"] = temperature
 
-        # Try max_tokens first (works for gpt-4, gpt-3.5)
-        # Some models like gpt-5-mini require max_completion_tokens instead
-        try:
-            kwargs = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens
-            }
-            if response_format:
-                kwargs["response_format"] = response_format
+        if response_format:
+            kwargs["response_format"] = response_format
 
-            response = self.client.chat.completions.create(**kwargs)
-            self._token_param = "max_tokens"
-            logger.info(f"✓ Using max_tokens with {self.model}")
-            return response.choices[0].message.content or ""
-        except Exception as e:
-            error_msg = str(e)
-            # OpenAI API explicitly says to use max_completion_tokens
-            if "max_completion_tokens" in error_msg and "Unsupported parameter" in error_msg:
-                logger.info(f"Retrying with max_completion_tokens for {self.model}")
-                # Remove max_tokens, add max_completion_tokens
-                kwargs.pop("max_tokens", None)
-                kwargs["max_completion_tokens"] = max_tokens
-
-                response = self.client.chat.completions.create(**kwargs)
-                self._token_param = "max_completion_tokens"
-                logger.info(f"✓ Using max_completion_tokens with {self.model}")
-                return response.choices[0].message.content or ""
-            # If it's a different error, raise it
-            raise
+        response = self.client.chat.completions.create(**kwargs)
+        return response.choices[0].message.content or ""
 
     def create_completion(
         self,
