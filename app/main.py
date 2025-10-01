@@ -45,7 +45,7 @@ app.include_router(site_profile.router)
 async def startup_event():
     """Log startup information"""
     logger.info("✅ SiteSync API ready to accept requests")
-    logger.info(f"🤖 AI Model: {settings.LLM_MODEL} (with automatic fallback to gpt-4o)")
+    logger.info(f"🤖 AI Model: {settings.LLM_MODEL} (with automatic fallback to {settings.LLM_FALLBACK_MODEL})")
 
 @app.get("/health")
 def health():

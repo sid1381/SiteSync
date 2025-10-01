@@ -5,8 +5,8 @@ import json
 from typing import List, Dict, Any, Optional
 
 PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()  # "openai" | "none"
-MODEL = os.getenv("LLM_MODEL", "gpt-4o")
-FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gpt-4o")
+MODEL = os.getenv("LLM_MODEL", "gpt-5-mini")
+FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "gpt-5-mini")
 TIMEOUT = int(os.getenv("LLM_TIMEOUT_SECS", "20"))
 
 def _openai_chat(messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 800) -> str:
@@ -46,7 +46,7 @@ def _openai_chat(messages: List[Dict[str, str]], temperature: float = 0.2, max_t
         print(f"Responses API unavailable ({e}), falling back to chat.completions API")
         pass
 
-    # Fallback to standard Chat Completions API (always use gpt-4o for quality)
+    # Fallback to standard Chat Completions API (use configured fallback model)
     fallback_model = FALLBACK_MODEL
     resp = client.chat.completions.create(
         model=fallback_model,
