@@ -1,6 +1,6 @@
 """
-Unified OpenAI Client with runtime auto-detection of correct token parameter.
-Handles both max_tokens and max_completion_tokens automatically.
+Unified OpenAI Client for gpt-5-mini (stable recipe).
+OpenAI SDK 2.0.1, Chat Completions API, max_tokens parameter only.
 """
 import os
 import json
@@ -8,13 +8,15 @@ import logging
 from typing import Dict, Any, Optional
 from openai import OpenAI
 
-# Set up logging
 logger = logging.getLogger(__name__)
 
 class UnifiedOpenAIClient:
     """
-    Unified OpenAI client that auto-detects the correct token parameter at runtime.
-    Tries max_tokens first, falls back to max_completion_tokens if needed.
+    Stable OpenAI client for gpt-5-mini.
+    - SDK: 2.0.1
+    - API: Chat Completions only
+    - Param: max_completion_tokens (API requirement for gpt-5-mini)
+    - Budget: 1000-2000 tokens for reasoning overhead
     """
 
     def __init__(self, api_key: Optional[str] = None):
@@ -22,70 +24,42 @@ class UnifiedOpenAIClient:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set")
         self.client = OpenAI(api_key=self.api_key)
-        self.model = os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self._token_param = None  # Cache which param works for this model
+        self.model = os.getenv("LLM_MODEL", "gpt-5-mini")
 
     def chat_completion(
         self,
         system_message: str,
         user_message: str,
         temperature: float = 0.1,
-        max_tokens: int = 2000,  # Higher default for gpt-5-mini reasoning tokens
-        response_format: Optional[Dict] = None
+        max_tokens: int = 2000
     ) -> str:
         """
-        Create a chat completion using OpenAI SDK v2.0+
+        Call Chat Completions API with max_tokens.
 
-        GPT-5 models require max_completion_tokens parameter.
-        GPT-4 and earlier use max_tokens.
-
-        Args:
-            system_message: System context for the model
-            user_message: User prompt/question
-            temperature: Sampling temperature (0-2)
-            max_tokens: Maximum tokens to generate
-            response_format: Optional format like {"type": "json_object"}
-
-        Returns:
-            The model's response text
+        gpt-5-mini uses reasoning tokens internally, needs high budgets.
+        Returns text content, logs length and finish_reason.
         """
         messages = [
             {"role": "system", "content": system_message or "You are a helpful assistant."},
             {"role": "user", "content": user_message}
         ]
 
-        # GPT-5 models use max_completion_tokens, GPT-4 and earlier use max_tokens
+        # gpt-5-mini requires max_completion_tokens (API requirement)
         kwargs = {
             "model": self.model,
             "messages": messages,
+            "max_completion_tokens": max_tokens
         }
-
-        # GPT-4.1 and newer models use max_completion_tokens
-        # Check if model needs special handling
-        uses_new_api = ("gpt-4.1" in self.model.lower() or
-                        "gpt-5" in self.model.lower() or
-                        "o1" in self.model.lower())
-
-        if uses_new_api:
-            # Newer models: max_completion_tokens, default temperature only
-            kwargs["max_completion_tokens"] = max_tokens
-            # Don't set temperature or response_format - not supported by some newer models
-        else:
-            # Older models: max_tokens, custom temperature, response_format
-            kwargs["max_tokens"] = max_tokens
-            kwargs["temperature"] = temperature
-            if response_format:
-                kwargs["response_format"] = response_format
-
-        # Debug logging
-        logger.info(f"Calling OpenAI with model={self.model}, kwargs keys={list(kwargs.keys())}")
 
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content or ""
+        finish_reason = response.choices[0].finish_reason
 
-        # Log if response is unexpectedly empty
+        # Log for debugging truncation
+        logger.info(f"OpenAI response: model={self.model}, length={len(content)}, finish_reason={finish_reason}")
+
         if not content:
-            logger.error(f"{self.model} returned empty response! Full response: {response}")
+            logger.error(f"Empty response! finish_reason={finish_reason}, usage={response.usage}")
             logger.error(f"Prompt was: {user_message[:200]}")
 
         return content
@@ -95,18 +69,13 @@ class UnifiedOpenAIClient:
         prompt: str,
         system_message: Optional[str] = None,
         temperature: float = 0.1,
-        max_tokens: int = 2000,
-        response_format: Optional[Dict] = None
+        max_tokens: int = 2000
     ) -> str:
-        """
-        Legacy method name for compatibility. Calls chat_completion.
-        """
+        """Legacy method name for compatibility."""
         return self.chat_completion(
             system_message=system_message or "You are a helpful assistant.",
             user_message=prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format=response_format
+            max_tokens=max_tokens
         )
 
     def create_json_completion(
@@ -117,48 +86,36 @@ class UnifiedOpenAIClient:
         max_tokens: int = 2000
     ) -> Dict[str, Any]:
         """
-        Create a completion that returns JSON.
+        Get JSON response from gpt-5-mini.
 
-        For GPT-5 models: adds explicit JSON instruction to prompt
-        For GPT-4 models: uses response_format parameter
+        NO response_format (causes failures).
+        Instead: explicit prompt + manual parsing.
         """
-        # Add explicit JSON instruction for newer models
-        uses_new_api = ("gpt-4.1" in self.model.lower() or
-                        "gpt-5" in self.model.lower() or
-                        "o1" in self.model.lower())
-
-        if uses_new_api:
-            enhanced_prompt = f"{prompt}\n\nIMPORTANT: Return ONLY valid JSON with no additional text before or after."
-            enhanced_system = (system_message or "You are a helpful assistant.") + " Always return valid JSON only."
-        else:
-            enhanced_prompt = prompt
-            enhanced_system = system_message or "You are a helpful assistant."
+        # Explicit JSON instruction in prompt
+        enhanced_prompt = f"{prompt}\n\nIMPORTANT: Return ONLY valid JSON with no additional text before or after."
+        enhanced_system = (system_message or "You are a helpful assistant.") + " Always return valid JSON only."
 
         response_text = self.chat_completion(
             system_message=enhanced_system,
             user_message=enhanced_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format={"type": "json_object"}
+            max_tokens=max_tokens
         )
 
-        # Try to parse JSON, handling potential markdown code blocks
+        # Strip markdown code fences
         response_text = response_text.strip()
-
-        # Remove markdown code blocks if present
         if response_text.startswith("```json"):
-            response_text = response_text[7:]  # Remove ```json
+            response_text = response_text[7:]
         if response_text.startswith("```"):
-            response_text = response_text[3:]  # Remove ```
+            response_text = response_text[3:]
         if response_text.endswith("```"):
-            response_text = response_text[:-3]  # Remove trailing ```
-
+            response_text = response_text[:-3]
         response_text = response_text.strip()
 
+        # Parse JSON
         try:
             return json.loads(response_text)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {response_text[:200]}")
+            logger.error(f"JSON parse failed: {response_text[:200]}")
             raise ValueError(f"LLM returned invalid JSON: {str(e)}")
 
 
