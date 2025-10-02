@@ -290,7 +290,23 @@ Return JSON format:
 
     def _create_compressed_site_summary(self, site_profile: Dict) -> str:
         """Create compact site summary for batch processing INCLUDING protocol data"""
+        import logging
+        logger = logging.getLogger(__name__)
+
         summary = []
+
+        # DIAGNOSTIC: Check if protocol requirements exist
+        protocol = site_profile.get('protocol_requirements', {})
+        logger.info(f"🔍 PROTOCOL DATA CHECK:")
+        logger.info(f"   protocol_requirements in site_profile: {bool(protocol)}")
+        if protocol:
+            logger.info(f"   Protocol keys: {list(protocol.keys())}")
+            timeline = protocol.get('study_timeline', {})
+            logger.info(f"   Study duration: {timeline.get('total_duration_weeks')} weeks")
+            logger.info(f"   Enrollment target: {timeline.get('enrollment_target')}")
+        else:
+            logger.info(f"   ❌ NO PROTOCOL DATA - this will cause low completion rates!")
+        logger.info("=" * 80)
 
         # Basic info
         summary.append(f"Site: {site_profile.get('name', 'Unknown')}")
