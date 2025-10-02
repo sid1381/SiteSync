@@ -22,7 +22,7 @@ class UnifiedOpenAIClient:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY not set")
         self.client = OpenAI(api_key=self.api_key)
-        self.model = os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL", "gpt-5-mini")
+        self.model = os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self._token_param = None  # Cache which param works for this model
 
     def chat_completion(
@@ -60,20 +60,31 @@ class UnifiedOpenAIClient:
             "messages": messages,
         }
 
-        # Use max_completion_tokens for gpt-5 models
-        # GPT-5 models only support temperature=1 (default), not custom values
-        if "gpt-5" in self.model.lower():
+        # GPT-4.1 and newer models use max_completion_tokens
+        # Check if model needs special handling
+        uses_new_api = ("gpt-4.1" in self.model.lower() or
+                        "gpt-5" in self.model.lower() or
+                        "o1" in self.model.lower())
+
+        if uses_new_api:
+            # Newer models: max_completion_tokens, default temperature only
             kwargs["max_completion_tokens"] = max_tokens
-            # Don't set temperature for gpt-5 - only default (1) is supported
+            # Don't set temperature or response_format - not supported by some newer models
         else:
+            # Older models: max_tokens, custom temperature, response_format
             kwargs["max_tokens"] = max_tokens
             kwargs["temperature"] = temperature
-
-        if response_format:
-            kwargs["response_format"] = response_format
+            if response_format:
+                kwargs["response_format"] = response_format
 
         response = self.client.chat.completions.create(**kwargs)
-        return response.choices[0].message.content or ""
+        content = response.choices[0].message.content or ""
+
+        # Log if response is unexpectedly empty
+        if not content and uses_new_api:
+            logger.warning(f"{self.model} returned empty response for prompt: {user_message[:100]}")
+
+        return content
 
     def create_completion(
         self,
@@ -103,15 +114,48 @@ class UnifiedOpenAIClient:
     ) -> Dict[str, Any]:
         """
         Create a completion that returns JSON.
+
+        For GPT-5 models: adds explicit JSON instruction to prompt
+        For GPT-4 models: uses response_format parameter
         """
+        # Add explicit JSON instruction for newer models
+        uses_new_api = ("gpt-4.1" in self.model.lower() or
+                        "gpt-5" in self.model.lower() or
+                        "o1" in self.model.lower())
+
+        if uses_new_api:
+            enhanced_prompt = f"{prompt}\n\nIMPORTANT: Return ONLY valid JSON with no additional text before or after."
+            enhanced_system = (system_message or "You are a helpful assistant.") + " Always return valid JSON only."
+        else:
+            enhanced_prompt = prompt
+            enhanced_system = system_message or "You are a helpful assistant."
+
         response_text = self.chat_completion(
-            system_message=system_message or "You are a helpful assistant.",
-            user_message=prompt,
+            system_message=enhanced_system,
+            user_message=enhanced_prompt,
             temperature=temperature,
             max_tokens=max_tokens,
             response_format={"type": "json_object"}
         )
-        return json.loads(response_text)
+
+        # Try to parse JSON, handling potential markdown code blocks
+        response_text = response_text.strip()
+
+        # Remove markdown code blocks if present
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]  # Remove ```json
+        if response_text.startswith("```"):
+            response_text = response_text[3:]  # Remove ```
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]  # Remove trailing ```
+
+        response_text = response_text.strip()
+
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {response_text[:200]}")
+            raise ValueError(f"LLM returned invalid JSON: {str(e)}")
 
 
 # Global client instance
