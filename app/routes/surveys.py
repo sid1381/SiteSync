@@ -132,8 +132,15 @@ async def upload_protocol(
         survey.status = "protocol_processed"
         db.commit()
 
-        print(f"✅ Extracted {len(protocol_requirements.get('equipment', []))} equipment requirements")
-        print(f"✅ Extracted {len(protocol_requirements.get('staff', []))} staff requirements")
+        # Log actual extraction results with correct keys
+        print(f"✅ Protocol extraction complete:")
+        print(f"   Equipment: {len(protocol_requirements.get('equipment_required', []))} items")
+        print(f"   Staff: {len(protocol_requirements.get('staff_requirements', []))} roles")
+        print(f"   Procedures: {len(protocol_requirements.get('procedures', []))} procedures")
+        print(f"   Study duration: {protocol_requirements.get('study_timeline', {}).get('total_duration_weeks')} weeks")
+        print(f"   Enrollment target: {protocol_requirements.get('study_timeline', {}).get('enrollment_target')} patients")
+        print(f"   Phase: {protocol_requirements.get('study_identification', {}).get('phase')}")
+        print(f"   Primary indication: {protocol_requirements.get('patient_population', {}).get('primary_indication')}")
 
         # STEP 2: Score feasibility (Protocol Requirements vs Site Capabilities)
         site_profile_response = await get_site_profile(survey.site_id, db)

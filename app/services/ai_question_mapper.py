@@ -238,7 +238,7 @@ Return JSON format:
             raise
 
     def _create_compressed_site_summary(self, site_profile: Dict) -> str:
-        """Create compact site summary for batch processing"""
+        """Create compact site summary for batch processing INCLUDING protocol data"""
         summary = []
 
         # Basic info
@@ -278,6 +278,49 @@ Return JSON format:
         perf = site_profile.get('historical_performance', {})
         if perf.get('studies_completed_5_years'):
             summary.append(f"Studies (5yr): {perf['studies_completed_5_years']}")
+
+        # ===== PROTOCOL REQUIREMENTS (CRITICAL FOR UAB SURVEYS) =====
+        protocol = site_profile.get('protocol_requirements', {})
+        if protocol:
+            summary.append("\n--- PROTOCOL REQUIREMENTS ---")
+
+            # Study timeline
+            timeline = protocol.get('study_timeline', {})
+            if timeline.get('total_duration_weeks'):
+                summary.append(f"Study duration: {timeline['total_duration_weeks']} weeks")
+            if timeline.get('enrollment_target'):
+                summary.append(f"Enrollment target: {timeline['enrollment_target']} patients")
+            if timeline.get('visit_frequency'):
+                summary.append(f"Visit frequency: {timeline['visit_frequency']}")
+
+            # Study identification
+            study_id = protocol.get('study_identification', {})
+            if study_id.get('phase'):
+                summary.append(f"Phase: {study_id['phase']}")
+            if study_id.get('therapeutic_area'):
+                summary.append(f"Therapeutic area: {study_id['therapeutic_area']}")
+
+            # Equipment required
+            equip_req = protocol.get('equipment_required', [])
+            if equip_req:
+                equipment_names = [e.get('name', '') for e in equip_req[:5]]
+                summary.append(f"Required equipment: {', '.join(equipment_names)}")
+
+            # Procedures
+            procedures = protocol.get('procedures', [])
+            if procedures:
+                proc_names = [p.get('name', '') for p in procedures[:5]]
+                summary.append(f"Required procedures: {', '.join(proc_names)}")
+
+            # Drug treatment
+            drug = protocol.get('drug_treatment', {})
+            if drug.get('administration_route'):
+                summary.append(f"Dosing: {drug['administration_route']}")
+
+            # Patient population
+            patient_pop_protocol = protocol.get('patient_population', {})
+            if patient_pop_protocol.get('primary_indication'):
+                summary.append(f"Indication: {patient_pop_protocol['primary_indication']}")
 
         return '\n'.join(summary)
 

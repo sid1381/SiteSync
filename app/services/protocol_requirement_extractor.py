@@ -108,9 +108,13 @@ class ProtocolRequirementExtractor:
 
     def _extract_with_openai(self, text: str) -> Dict[str, Any]:
         """Extract universal feasibility requirements using OpenAI structured prompts"""
+        import logging
+        logger = logging.getLogger(__name__)
 
         # Limit text to first 10000 characters to capture more protocol details
         text_sample = text[:10000] if len(text) > 10000 else text
+
+        logger.info(f"📋 Protocol extraction starting: {len(text_sample)} characters")
 
         prompt = f"""Extract key feasibility requirements from this clinical trial protocol that can answer typical sponsor survey questions.
 
@@ -245,21 +249,42 @@ This data will be used to answer survey questions like:
 Return ONLY valid JSON, no explanatory text."""
 
         try:
+            logger.info(f"🤖 Calling OpenAI for protocol extraction...")
+            logger.info(f"Prompt preview: {prompt[:500]}...")
+
             # Use unified client with automatic API detection and fallback
             requirements = self.openai_client.create_json_completion(
                 prompt=prompt,
                 system_message="You are a clinical research expert who extracts specific requirements from protocol documents. Return only valid JSON.",
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=3000  # Increased for complex protocols
             )
-            print(f"✅ OpenAI extraction successful")
+
+            logger.info(f"✅ OpenAI extraction successful")
+            logger.info(f"Extracted keys: {list(requirements.keys())}")
+
+            # Log structured data counts
+            if 'equipment_required' in requirements:
+                logger.info(f"Equipment items: {len(requirements.get('equipment_required', []))}")
+            if 'procedures' in requirements:
+                logger.info(f"Procedures: {len(requirements.get('procedures', []))}")
+            if 'staff_requirements' in requirements:
+                logger.info(f"Staff requirements: {len(requirements.get('staff_requirements', []))}")
+
+            # Log critical data for UAB surveys
+            timeline = requirements.get('study_timeline', {})
+            logger.info(f"Study duration: {timeline.get('total_duration_weeks')} weeks")
+            logger.info(f"Enrollment target: {timeline.get('enrollment_target')}")
+
             return requirements
 
         except json.JSONDecodeError as e:
-            print(f"❌ OpenAI JSON parsing failed: {e}")
+            logger.error(f"❌ OpenAI JSON parsing failed: {e}")
+            logger.error(f"This means the AI returned invalid JSON - using fallback")
             return self._extract_with_fallback(text)
         except Exception as e:
-            print(f"❌ OpenAI API call failed: {e}")
+            logger.error(f"❌ OpenAI API call failed: {e}")
+            logger.error(f"Full error: {str(e)}")
             return self._extract_with_fallback(text)
 
     def _extract_with_fallback(self, text: str) -> Dict[str, Any]:
