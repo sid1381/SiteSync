@@ -10,6 +10,75 @@ class AutofillEngine:
         self.survey_parser = UniversalSurveyParser()
         self.question_mapper = AIQuestionMapper()
 
+    async def extract_and_categorize_questions_only(
+        self,
+        file_content: bytes,
+        filename: str
+    ) -> Dict[str, Any]:
+        """
+        STEP 1: Extract and categorize questions ONLY - DO NOT AUTOFILL
+
+        This is called when survey is uploaded WITHOUT protocol data.
+        We extract questions and categorize them, but DON'T attempt to answer
+        until protocol data is available.
+        """
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+
+            logger.info("=" * 80)
+            logger.info("📋 SURVEY UPLOAD - EXTRACT & CATEGORIZE ONLY (NO AUTOFILL)")
+            logger.info("=" * 80)
+
+            # 1. Extract questions from document using AI
+            extracted_questions = await self.survey_parser.extract_questions_from_document(
+                file_content, filename
+            )
+
+            # 2. Convert to compatible format
+            questions_list = [
+                {
+                    'id': q.id,
+                    'text': q.text,
+                    'type': q.type.value,
+                    'is_objective': q.is_objective,
+                    'confidence': q.confidence_score,
+                    'context': q.context
+                }
+                for q in extracted_questions
+            ]
+
+            # 3. Calculate statistics (categorization only)
+            categorization = self.survey_parser.get_categorization_summary(extracted_questions)
+            total_questions = len(questions_list)
+
+            logger.info(f"✅ Extracted {total_questions} questions")
+            logger.info(f"   Objective: {categorization['objective_questions']}")
+            logger.info(f"   Subjective: {categorization['subjective_questions']}")
+            logger.info(f"⏭️  NEXT STEP: Upload protocol to enable autofill")
+            logger.info("=" * 80)
+
+            return {
+                "success": True,
+                "questions_extracted": total_questions,
+                "questions": questions_list,
+                "responses": [],  # Empty - no autofill yet
+                "autofilled_count": 0,
+                "completion_percentage": 0,
+                "feasibility_score": None,
+                "categorization": categorization,
+                "mapping_statistics": {},
+                "flags": [],
+                "next_step": "Upload protocol document to enable autofill and feasibility scoring"
+            }
+
+        except Exception as e:
+            logger.error(f"Question extraction error: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
     async def process_survey_document_universal(
         self,
         file_content: bytes,
@@ -18,6 +87,9 @@ class AutofillEngine:
     ) -> Dict[str, Any]:
         """
         Universal AI-powered survey processing that works with ANY survey format
+
+        WARNING: This tries to autofill WITHOUT protocol data, resulting in low completion!
+        Use extract_and_categorize_questions_only() instead for survey upload.
         """
         try:
             # 1. Extract questions from document using AI

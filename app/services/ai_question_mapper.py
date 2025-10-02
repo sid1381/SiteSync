@@ -231,7 +231,7 @@ Return JSON format:
         try:
             result = self.openai_client.create_json_completion(
                 prompt=prompt,
-                system_message="You are a clinical trial feasibility expert. Categorize questions as OBJECTIVE (answerable from site data) or SUBJECTIVE (needs human judgment). Provide specific answers for objective questions using the site profile data.",
+                system_message="You are a clinical trial feasibility expert. Categorize questions as OBJECTIVE (answerable from site/protocol data) or SUBJECTIVE (needs human judgment). For OBJECTIVE questions, ALWAYS provide specific answers from the data - NEVER return placeholder text like 'Manual review required'. If data is unclear, give your best answer with lower confidence (30-50). Only mark questions as SUBJECTIVE if they genuinely require human judgment (e.g., 'Do you think...', 'Are you comfortable...', 'Would you be willing...').",
                 temperature=0.1,
                 max_tokens=4000
             )

@@ -251,42 +251,42 @@ async def upload_survey_document(
     try:
         from app.services.autofill_engine import AutofillEngine
 
-        # Get site profile for intelligent mapping
-        site = db.get(models.Site, survey.site_id)
-        from app.routes.site_profile import get_site_profile
-
-        # Get complete site profile
-        site_profile_response = await get_site_profile(survey.site_id, db)
-
         # Initialize AI engine
         autofill_engine = AutofillEngine()
 
-        # Process document with universal AI
-        result = await autofill_engine.process_survey_document_universal(
-            file_content, file.filename, site_profile_response
+        # CRITICAL FIX: Only extract and categorize questions - DO NOT AUTOFILL yet!
+        # Autofill will happen AFTER protocol upload when we have complete context
+        print("📋 Survey upload: Extracting and categorizing questions (no autofill yet)")
+        result = await autofill_engine.extract_and_categorize_questions_only(
+            file_content, file.filename
         )
 
         if result["success"]:
-            # Store extracted questions and initial autofill results
+            # Store extracted questions ONLY - no responses yet
             survey.survey_questions = result["questions"]
-            survey.autofilled_responses = result["responses"]
-            survey.completion_percentage = result["completion_percentage"]
-            survey.feasibility_score = result["feasibility_score"]
-            survey.flags = result["flags"]
+            survey.autofilled_responses = []  # Empty - will be filled after protocol upload
+            survey.completion_percentage = 0  # Will be calculated after protocol upload
+            survey.feasibility_score = None  # Will be calculated after protocol upload
+            survey.flags = []  # Will be generated after protocol upload
             survey.status = "survey_processed"  # Ready for protocol upload
             db.commit()
+
+            print(f"✅ Extracted {result['questions_extracted']} questions")
+            print(f"   Objective: {result['categorization']['objective_questions']}")
+            print(f"   Subjective: {result['categorization']['subjective_questions']}")
+            print(f"⏭️  Next: Upload protocol to enable autofill")
 
             return {
                 "success": True,
                 "questions_extracted": result["questions_extracted"],
                 "objective_questions": result["categorization"]["objective_questions"],
                 "subjective_questions": result["categorization"]["subjective_questions"],
-                "autofilled_questions": result["autofilled_count"],
-                "completion_percentage": result["completion_percentage"],
-                "feasibility_score": result["feasibility_score"],
+                "autofilled_questions": 0,  # No autofill yet
+                "completion_percentage": 0,  # No autofill yet
+                "feasibility_score": None,  # No scoring yet
                 "categorization": result["categorization"],
-                "mapping_statistics": result["mapping_statistics"],
-                "flags": result["flags"],
+                "mapping_statistics": {},
+                "flags": [],
                 "next_step": result["next_step"]
             }
         else:
