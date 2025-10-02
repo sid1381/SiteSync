@@ -162,11 +162,35 @@ class AIQuestionMapper:
         # Create compressed site profile
         site_summary = self._create_compressed_site_summary(site_profile)
 
+        # DIAGNOSTIC: Log the protocol context being sent
+        logger.info("=" * 80)
+        logger.info("DIAGNOSTIC: BATCH AI MAPPING")
+        logger.info("=" * 80)
+        logger.info(f"📋 Site summary being sent to AI ({len(site_summary)} chars):")
+        logger.info(site_summary)
+        logger.info("=" * 80)
+
         # Build batch prompt
         questions_dict = {
             q.get('id', f'q{i}'): q.get('text', '')
             for i, q in enumerate(questions)
         }
+
+        # DIAGNOSTIC: Log specific test questions
+        test_questions = [
+            'Does the study collect PK samples?',
+            'Is there a washout period?',
+            'Inpatient, outpatient or both?',
+            'Is the dosing schedule complex?'
+        ]
+        logger.info("🔍 TRACING SPECIFIC QUESTIONS:")
+        for test_q in test_questions:
+            matching = [f"{qid}: {qtext}" for qid, qtext in questions_dict.items() if test_q.lower() in qtext.lower()]
+            if matching:
+                logger.info(f"  Found: {matching[0]}")
+            else:
+                logger.info(f"  NOT FOUND: {test_q}")
+        logger.info("=" * 80)
 
         prompt = f"""Given these survey questions and site profile, categorize AND map ALL questions.
 
@@ -177,10 +201,21 @@ QUESTIONS TO PROCESS:
 {json.dumps(questions_dict, indent=2)}
 
 For EACH question, return:
-- category: "OBJECTIVE" (can auto-answer from site data) or "SUBJECTIVE" (needs manual review)
-- answer: The actual answer from site profile, or "Manual review required" for subjective
-- confidence: 0-100 score (0=needs review, 100=certain)
-- reasoning: Brief explanation
+- category: "OBJECTIVE" (can auto-answer from site/protocol data) or "SUBJECTIVE" (needs manual review)
+- answer: Specific answer from the data. For Yes/No questions, answer "Yes" or "No" and explain why in reasoning.
+  Examples:
+  * "Does the study collect PK samples?" → answer: "Yes" (if protocol mentions PK), reasoning: "Protocol includes PK sampling at weeks 4, 8, 12"
+  * "What is study duration?" → answer: "56 weeks" (extract from protocol)
+  * "Is there a washout period?" → answer: "Yes" or "No" (check protocol)
+  * "Inpatient, outpatient or both?" → answer: "Outpatient" (extract from protocol)
+- confidence: 0-100 score (use high confidence 80+ when data is clearly present, low confidence <30 when unclear)
+- reasoning: Brief explanation of where you found the answer
+
+IMPORTANT:
+- If protocol/site data contains the answer, mark OBJECTIVE with high confidence (70-95)
+- Only use "Manual review required" for truly subjective questions requiring human judgment
+- For Yes/No questions, answer "Yes" or "No" based on protocol/site data
+- Use low confidence (<30) ONLY when the data is genuinely missing or ambiguous
 
 Return JSON format:
 {{
@@ -201,6 +236,11 @@ Return JSON format:
                 max_tokens=4000
             )
 
+            # DIAGNOSTIC: Log AI's raw response
+            logger.info("🤖 AI RAW RESPONSE (first 2000 chars):")
+            logger.info(json.dumps(result, indent=2)[:2000])
+            logger.info("=" * 80)
+
             # Convert JSON response to AIQuestionMapping objects
             mappings = []
             for q in questions:
@@ -209,6 +249,17 @@ Return JSON format:
 
                 if q_id in result:
                     data = result[q_id]
+
+                    # DIAGNOSTIC: Log specific test question responses
+                    is_test_question = any(test_q.lower() in q_text.lower() for test_q in test_questions)
+                    if is_test_question:
+                        logger.info(f"🎯 TRACE - Question: {q_text}")
+                        logger.info(f"   AI Response: {json.dumps(data, indent=2)}")
+                        logger.info(f"   Answer: '{data.get('answer', 'No answer provided')}'")
+                        logger.info(f"   Confidence: {data.get('confidence', 50)}")
+                        logger.info(f"   Category: {data.get('category', 'UNKNOWN')}")
+                        logger.info("=" * 80)
+
                     mappings.append(AIQuestionMapping(
                         question_id=q_id,
                         question_text=q_text,
@@ -1117,17 +1168,36 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
         """
         Generate autofilled responses based on AI mappings
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # DIAGNOSTIC: Track filtering stats
+        test_questions = [
+            'Does the study collect PK samples?',
+            'Is there a washout period?',
+            'Inpatient, outpatient or both?',
+            'Is the dosing schedule complex?'
+        ]
+
         responses = []
 
         for i, question in enumerate(questions):
             question_id = question.get('id', f'q_{i+1}')
+            question_text = question.get('text', '')
             is_objective = question.get('is_objective', True)
+
+            # DIAGNOSTIC: Track test questions
+            is_test_question = any(test_q.lower() in question_text.lower() for test_q in test_questions)
 
             # Subjective questions ALWAYS require manual input, regardless of mapping
             if not is_objective:
+                if is_test_question:
+                    logger.info(f"🔴 FILTER: {question_text}")
+                    logger.info(f"   Decision: SUBJECTIVE - Manual required")
+                    logger.info("=" * 80)
                 response = {
                     'id': question_id,
-                    'text': question.get('text', ''),
+                    'text': question_text,
                     'type': question.get('type', 'text'),
                     'is_objective': False,
                     'response': '',
@@ -1142,13 +1212,34 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
             # Find the corresponding mapping for objective questions
             mapping = next((m for m in mappings if m.question_id == question_id), None)
 
+            # DIAGNOSTIC: Log filtering decision for test questions
+            if is_test_question:
+                if mapping:
+                    logger.info(f"🔵 FILTER CHECK: {question_text}")
+                    logger.info(f"   Mapping found: YES")
+                    logger.info(f"   Confidence: {mapping.confidence_score}")
+                    logger.info(f"   Confidence > 0.3? {mapping.confidence_score > 0.3}")
+                    logger.info(f"   Mapped value: '{mapping.mapped_value}'")
+                    logger.info(f"   Value is truthy? {bool(mapping.mapped_value)}")
+                    logger.info(f"   Value in exclusion list? {mapping.mapped_value in ['Manual review required', 'Requires manual review', 'No answer provided', 'Not processed']}")
+                else:
+                    logger.info(f"🔵 FILTER CHECK: {question_text}")
+                    logger.info(f"   Mapping found: NO")
+                    logger.info(f"   Reason: No mapping object found for question_id={question_id}")
+
             # Check if mapping has valid answer (not "Manual review required" or similar)
+            # LOWERED confidence threshold from 30 to 25 to catch more borderline cases
             has_valid_answer = (
                 mapping and
-                mapping.confidence_score > 0.3 and
+                mapping.confidence_score > 25 and
                 mapping.mapped_value and
-                mapping.mapped_value not in ['Manual review required', 'Requires manual review', 'No answer provided', 'Not processed']
+                str(mapping.mapped_value).strip() and  # Ensure it's not empty string
+                mapping.mapped_value not in ['Manual review required', 'Requires manual review', 'No answer provided', 'Not processed', 'No data available']
             )
+
+            if is_test_question:
+                logger.info(f"   HAS VALID ANSWER? {has_valid_answer}")
+                logger.info("=" * 80)
 
             if has_valid_answer:
                 response = {
@@ -1177,6 +1268,19 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
                 }
 
             responses.append(response)
+
+        # DIAGNOSTIC: Summary statistics
+        total_responses = len(responses)
+        ai_answered = sum(1 for r in responses if r['source'] == 'ai_mapping')
+        manual_required = sum(1 for r in responses if r['source'] == 'manual_required')
+        completion_pct = (ai_answered / total_responses * 100) if total_responses > 0 else 0
+
+        logger.info("=" * 80)
+        logger.info("📊 RESPONSE GENERATION SUMMARY")
+        logger.info(f"   Total questions: {total_responses}")
+        logger.info(f"   AI answered: {ai_answered} ({completion_pct:.1f}%)")
+        logger.info(f"   Manual required: {manual_required} ({100-completion_pct:.1f}%)")
+        logger.info("=" * 80)
 
         return responses
 
