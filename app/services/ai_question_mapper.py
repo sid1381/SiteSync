@@ -763,7 +763,7 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
                 prompt=prompt,
                 system_message="You are a CLINICAL TRIAL FEASIBILITY ASSESSOR. Your job is to VALIDATE if the site can run THIS SPECIFIC PROTOCOL by comparing protocol requirements to site capabilities. Be DECISIVE - answer Yes only if ALL requirements are met, No if ANY are missing. Provide specific gap analysis. Return only valid JSON.",
                 temperature=0.1,
-                max_tokens=500
+                max_tokens=3000  # High limit for gpt-5-mini reasoning + JSON output
             )
 
             # POST-PROCESSING: Fix inverted logic for "Are X needed/required?" questions

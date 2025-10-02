@@ -288,7 +288,7 @@ class FeasibilityProcessor:
                     {"role": "user", "content": prompt}
                 ]
 
-                ai_response = generate(messages, temperature=0.3, max_tokens=400)  # Increased for gpt-5-mini reasoning tokens
+                ai_response = generate(messages, temperature=0.3, max_tokens=1500)  # High limit for gpt-5-mini reasoning
                 is_restrictive = "yes" in ai_response.lower()
 
                 responses["inclusion_exclusion_restrictive"] = {

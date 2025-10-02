@@ -30,7 +30,7 @@ class UnifiedOpenAIClient:
         system_message: str,
         user_message: str,
         temperature: float = 0.1,
-        max_tokens: int = 500,
+        max_tokens: int = 2000,  # Higher default for gpt-5-mini reasoning tokens
         response_format: Optional[Dict] = None
     ) -> str:
         """

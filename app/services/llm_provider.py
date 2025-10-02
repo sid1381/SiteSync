@@ -5,7 +5,7 @@ from typing import List, Dict
 
 PROVIDER = os.getenv("LLM_PROVIDER", "openai").lower()  # "openai" | "none"
 
-def _openai_chat(messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 800) -> str:
+def _openai_chat(messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 2000) -> str:
     """
     Call OpenAI using unified client with automatic parameter detection
     """
@@ -49,7 +49,7 @@ def _local_fallback(messages: List[Dict[str, str]], **_) -> str:
         f"System:\n{system}\n\nUser:\n{user}\n"
     )
 
-def generate(messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 800) -> str:
+def generate(messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 2000) -> str:
     """
     Generate a completion using configured LLM provider.
     Routes through unified OpenAI client for automatic parameter detection.
