@@ -31,25 +31,38 @@ class UnifiedOpenAIClient:
         system_message: str,
         user_message: str,
         temperature: float = 0.1,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
+        response_format: Optional[Dict] = None
     ) -> str:
         """
-        Call Chat Completions API with max_tokens.
+        Call Chat Completions API.
 
-        gpt-5-mini uses reasoning tokens internally, needs high budgets.
-        Returns text content, logs length and finish_reason.
+        gpt-4o-mini: uses max_tokens + response_format (standard)
+        gpt-5-mini: uses max_completion_tokens (reasoning model)
         """
         messages = [
             {"role": "system", "content": system_message or "You are a helpful assistant."},
             {"role": "user", "content": user_message}
         ]
 
-        # gpt-5-mini requires max_completion_tokens (API requirement)
-        kwargs = {
-            "model": self.model,
-            "messages": messages,
-            "max_completion_tokens": max_tokens
-        }
+        # Model-specific parameters
+        if "gpt-5" in self.model.lower():
+            # gpt-5-mini: reasoning model, needs max_completion_tokens
+            kwargs = {
+                "model": self.model,
+                "messages": messages,
+                "max_completion_tokens": max_tokens
+            }
+        else:
+            # gpt-4o-mini and others: standard models
+            kwargs = {
+                "model": self.model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature
+            }
+            if response_format:
+                kwargs["response_format"] = response_format
 
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content or ""
@@ -86,20 +99,30 @@ class UnifiedOpenAIClient:
         max_tokens: int = 2000
     ) -> Dict[str, Any]:
         """
-        Get JSON response from gpt-5-mini.
+        Get JSON response.
 
-        NO response_format (causes failures).
-        Instead: explicit prompt + manual parsing.
+        gpt-4o-mini: uses response_format=json_object (fast, reliable)
+        gpt-5-mini: manual parsing (response_format not supported)
         """
-        # Explicit JSON instruction in prompt
-        enhanced_prompt = f"{prompt}\n\nIMPORTANT: Return ONLY valid JSON with no additional text before or after."
-        enhanced_system = (system_message or "You are a helpful assistant.") + " Always return valid JSON only."
+        if "gpt-5" in self.model.lower():
+            # gpt-5-mini: explicit prompt + manual parsing
+            enhanced_prompt = f"{prompt}\n\nIMPORTANT: Return ONLY valid JSON with no additional text before or after."
+            enhanced_system = (system_message or "You are a helpful assistant.") + " Always return valid JSON only."
 
-        response_text = self.chat_completion(
-            system_message=enhanced_system,
-            user_message=enhanced_prompt,
-            max_tokens=max_tokens
-        )
+            response_text = self.chat_completion(
+                system_message=enhanced_system,
+                user_message=enhanced_prompt,
+                max_tokens=max_tokens
+            )
+        else:
+            # gpt-4o-mini: use response_format
+            response_text = self.chat_completion(
+                system_message=system_message or "You are a helpful assistant.",
+                user_message=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"}
+            )
 
         # Strip markdown code fences
         response_text = response_text.strip()

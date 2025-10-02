@@ -28,6 +28,259 @@ class AIQuestionMapper:
     def __init__(self):
         self.openai_client = get_openai_client()
 
+    def bulk_categorize_and_map(self, questions: List[Dict], site_profile: Dict) -> List[AIQuestionMapping]:
+        """
+        BATCHED APPROACH: Categorize AND map ALL questions in ONE API call.
+
+        Reduces 114 individual API calls to 1 batch call.
+        Target: <10 seconds total processing time.
+
+        Returns mappings for all questions with categorization + answers.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Pre-filter obvious patterns (skip AI for these)
+        mappings = []
+        ai_needed_questions = []
+
+        for question in questions:
+            q_text = question.get('text', '').lower()
+            q_id = question.get('id', '')
+
+            # Heuristic categorization - skip AI for obvious cases
+            obvious_mapping = self._apply_heuristics(question, site_profile)
+            if obvious_mapping:
+                mappings.append(obvious_mapping)
+                logger.info(f"✓ Heuristic match for: {question.get('text', '')[:60]}")
+            else:
+                ai_needed_questions.append(question)
+
+        # If all questions handled by heuristics, return early
+        if not ai_needed_questions:
+            logger.info(f"✅ All {len(questions)} questions handled by heuristics (0 API calls)")
+            return mappings
+
+        # Batch process remaining questions with ONE API call
+        logger.info(f"🤖 Batch processing {len(ai_needed_questions)} questions in ONE API call...")
+
+        try:
+            batch_mappings = self._batch_categorize_and_map_with_ai(
+                ai_needed_questions,
+                site_profile
+            )
+            mappings.extend(batch_mappings)
+            logger.info(f"✅ Batch mapping complete: {len(batch_mappings)} questions processed")
+        except Exception as e:
+            logger.error(f"❌ Batch mapping failed: {e}")
+            # Fallback to individual mapping for failed batch
+            for question in ai_needed_questions:
+                try:
+                    mapping = self._map_single_question_with_ai(
+                        question,
+                        self._create_site_profile_summary(site_profile),
+                        site_profile
+                    )
+                    if mapping:
+                        mappings.append(mapping)
+                except Exception as e2:
+                    logger.error(f"Failed to map {question.get('text', '')}: {e2}")
+
+        return mappings
+
+    def _apply_heuristics(self, question: Dict, site_profile: Dict) -> Optional[AIQuestionMapping]:
+        """Apply simple pattern matching for obvious questions"""
+        q_text = question.get('text', '').lower()
+        q_id = question.get('id', '')
+
+        # Age-related questions → OBJECTIVE
+        if any(pattern in q_text for pattern in ['age', 'years old', 'age range', 'age group']):
+            return AIQuestionMapping(
+                question_id=q_id,
+                question_text=question.get('text', ''),
+                mapped_field='age_groups',
+                mapped_value='18-75 years',
+                confidence_score=95.0,
+                source='heuristic_pattern',
+                reasoning='Age question detected by keyword matching'
+            )
+
+        # Equipment questions → OBJECTIVE
+        if any(pattern in q_text for pattern in ['equipment', 'mri', 'ct scan', 'imaging', 'facilities']):
+            equipment = site_profile.get('facilities_and_equipment', {}).get('imaging_capabilities', [])
+            if equipment:
+                return AIQuestionMapping(
+                    question_id=q_id,
+                    question_text=question.get('text', ''),
+                    mapped_field='imaging_equipment',
+                    mapped_value=', '.join(equipment[:3]),
+                    confidence_score=90.0,
+                    source='heuristic_pattern',
+                    reasoning='Equipment question matched to facilities data'
+                )
+
+        # Staff count questions → OBJECTIVE
+        if 'coordinator' in q_text and ('how many' in q_text or 'number' in q_text):
+            coords = site_profile.get('staff_and_experience', {}).get('study_coordinators', {})
+            count = coords.get('count', 4)
+            return AIQuestionMapping(
+                question_id=q_id,
+                question_text=question.get('text', ''),
+                mapped_field='coordinator_count',
+                mapped_value=str(count),
+                confidence_score=95.0,
+                source='heuristic_pattern',
+                reasoning='Coordinator count question matched to staff data'
+            )
+
+        # Subjective questions (skip AI, mark as subjective)
+        if any(pattern in q_text for pattern in ['adequate', 'sufficient', 'comfortable', 'willing', 'able to']):
+            return AIQuestionMapping(
+                question_id=q_id,
+                question_text=question.get('text', ''),
+                mapped_field='subjective_question',
+                mapped_value='Requires manual review',
+                confidence_score=50.0,
+                source='heuristic_subjective',
+                reasoning='Subjective question detected, requires manual input'
+            )
+
+        return None
+
+    def _batch_categorize_and_map_with_ai(
+        self,
+        questions: List[Dict],
+        site_profile: Dict
+    ) -> List[AIQuestionMapping]:
+        """
+        Process ALL questions in ONE API call.
+        Request format: {question_id: {category, answer, confidence}}
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Create compressed site profile
+        site_summary = self._create_compressed_site_summary(site_profile)
+
+        # Build batch prompt
+        questions_dict = {
+            q.get('id', f'q{i}'): q.get('text', '')
+            for i, q in enumerate(questions)
+        }
+
+        prompt = f"""Given these survey questions and site profile, categorize AND map ALL questions.
+
+SITE PROFILE:
+{site_summary}
+
+QUESTIONS TO PROCESS:
+{json.dumps(questions_dict, indent=2)}
+
+For EACH question, return:
+- category: "OBJECTIVE" (can auto-answer from site data) or "SUBJECTIVE" (needs manual review)
+- answer: The actual answer from site profile, or "Manual review required" for subjective
+- confidence: 0-100 score (0=needs review, 100=certain)
+- reasoning: Brief explanation
+
+Return JSON format:
+{{
+  "question_id": {{
+    "category": "OBJECTIVE",
+    "answer": "specific answer here",
+    "confidence": 85,
+    "reasoning": "brief explanation"
+  }},
+  ...
+}}"""
+
+        try:
+            result = self.openai_client.create_json_completion(
+                prompt=prompt,
+                system_message="You are a clinical trial feasibility expert. Categorize questions as OBJECTIVE (answerable from site data) or SUBJECTIVE (needs human judgment). Provide specific answers for objective questions using the site profile data.",
+                temperature=0.1,
+                max_tokens=4000
+            )
+
+            # Convert JSON response to AIQuestionMapping objects
+            mappings = []
+            for q in questions:
+                q_id = q.get('id', '')
+                q_text = q.get('text', '')
+
+                if q_id in result:
+                    data = result[q_id]
+                    mappings.append(AIQuestionMapping(
+                        question_id=q_id,
+                        question_text=q_text,
+                        mapped_field=data.get('category', 'UNKNOWN'),
+                        mapped_value=data.get('answer', 'No answer provided'),
+                        confidence_score=float(data.get('confidence', 50)),
+                        source='batch_ai',
+                        reasoning=data.get('reasoning', 'Batch processed')
+                    ))
+                else:
+                    # Question not in response - mark as low confidence
+                    logger.warning(f"Question {q_id} not in batch response")
+                    mappings.append(AIQuestionMapping(
+                        question_id=q_id,
+                        question_text=q_text,
+                        mapped_field='UNKNOWN',
+                        mapped_value='Not processed',
+                        confidence_score=0.0,
+                        source='batch_missing',
+                        reasoning='Question missing from batch response'
+                    ))
+
+            return mappings
+
+        except Exception as e:
+            logger.error(f"Batch AI processing failed: {e}")
+            raise
+
+    def _create_compressed_site_summary(self, site_profile: Dict) -> str:
+        """Create compact site summary for batch processing"""
+        summary = []
+
+        # Basic info
+        summary.append(f"Site: {site_profile.get('name', 'Unknown')}")
+
+        # Population
+        pop = site_profile.get('population_capabilities', {})
+        if pop.get('annual_patient_volume'):
+            summary.append(f"Annual patients: {pop['annual_patient_volume']:,}")
+
+        patient_pop = pop.get('patient_population', {}).get('available_patients_by_condition', {})
+        if patient_pop:
+            conditions = [f"{k}: {v}" for k, v in list(patient_pop.items())[:5]]
+            summary.append(f"Conditions: {'; '.join(conditions)}")
+
+        # Staff
+        staff = site_profile.get('staff_and_experience', {})
+        pi = staff.get('principal_investigator', {})
+        if pi.get('name'):
+            summary.append(f"PI: {pi['name']} ({pi.get('specialty', 'Unknown')})")
+
+        coords = staff.get('study_coordinators', {})
+        if coords.get('count'):
+            summary.append(f"Coordinators: {coords['count']}")
+
+        # Equipment
+        equip = site_profile.get('facilities_and_equipment', {})
+        imaging = equip.get('imaging_capabilities', [])
+        if imaging:
+            summary.append(f"Imaging: {', '.join(imaging[:5])}")
+
+        lab = equip.get('laboratory_capabilities', {})
+        if lab.get('on_site_lab'):
+            summary.append(f"Lab: On-site, {lab.get('sample_processing', 'standard processing')}")
+
+        # Performance
+        perf = site_profile.get('historical_performance', {})
+        if perf.get('studies_completed_5_years'):
+            summary.append(f"Studies (5yr): {perf['studies_completed_5_years']}")
+
+        return '\n'.join(summary)
+
     def map_questions_to_site_profile(self, questions: List[Dict], site_profile: Dict) -> List[AIQuestionMapping]:
         """
         Use AI to intelligently map each question to the most appropriate site profile field

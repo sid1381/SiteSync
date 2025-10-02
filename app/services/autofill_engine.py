@@ -38,8 +38,9 @@ class AutofillEngine:
                 for q in extracted_questions
             ]
 
-            # 3. Map questions to site profile data
-            mappings = self.question_mapper.map_questions_to_site_profile(
+            # 3. Map questions to site profile data (BATCH PROCESSING)
+            # Uses bulk_categorize_and_map() for 1-2 API calls instead of 114
+            mappings = self.question_mapper.bulk_categorize_and_map(
                 questions_list, site_profile
             )
 
@@ -115,8 +116,8 @@ class AutofillEngine:
             else:
                 site_profile_with_protocol = site_profile
 
-            # Map questions to site profile data using enhanced mapper
-            mappings = self.question_mapper.map_questions_to_site_profile(
+            # Map questions to site profile data (BATCH PROCESSING - 1-2 API calls)
+            mappings = self.question_mapper.bulk_categorize_and_map(
                 extracted_questions, site_profile_with_protocol
             )
 
