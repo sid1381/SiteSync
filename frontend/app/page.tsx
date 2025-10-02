@@ -998,7 +998,7 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
                   </p>
                   {response.confidence && (
                     <span className="ml-3 text-xs font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                      {(response.confidence * 100).toFixed(0)}% confidence
+                      {response.confidence.toFixed(0)}% confidence
                     </span>
                   )}
                 </div>
@@ -1009,7 +1009,7 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
                     <p className="text-xs text-gray-600 mt-2">
                       <span className="font-medium">Source:</span> {response.source}
                       {response.confidence && response.confidence > 0 && (
-                        <span className="ml-2">• {Math.round(response.confidence * 100)}% confidence</span>
+                        <span className="ml-2">• {Math.round(response.confidence)}% confidence</span>
                       )}
                     </p>
                   </div>

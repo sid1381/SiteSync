@@ -1099,7 +1099,15 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
             # Find the corresponding mapping for objective questions
             mapping = next((m for m in mappings if m.question_id == question_id), None)
 
-            if mapping and mapping.confidence_score > 0.3 and mapping.mapped_value:
+            # Check if mapping has valid answer (not "Manual review required" or similar)
+            has_valid_answer = (
+                mapping and
+                mapping.confidence_score > 0.3 and
+                mapping.mapped_value and
+                mapping.mapped_value not in ['Manual review required', 'Requires manual review', 'No answer provided', 'Not processed']
+            )
+
+            if has_valid_answer:
                 response = {
                     'id': question_id,
                     'text': question.get('text', ''),

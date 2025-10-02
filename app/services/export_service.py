@@ -66,7 +66,7 @@ class ExportService:
                 obj_data.append([
                     resp['text'][:80] + "..." if len(resp['text']) > 80 else resp['text'],
                     str(resp.get('response', 'N/A')),
-                    f"{resp.get('confidence', 0)*100:.0f}%" if resp.get('confidence') else "Manual"
+                    f"{resp.get('confidence', 0):.0f}%" if resp.get('confidence') else "Manual"
                 ])
 
             obj_table = Table(obj_data, colWidths=[280, 150, 70])
@@ -126,7 +126,7 @@ class ExportService:
                     'Objective/Subjective': 'Objective' if resp.get('is_objective') else 'Subjective',
                     'Response': resp.get('response', ''),
                     'Source': resp.get('source', 'Manual'),
-                    'Confidence': f"{resp.get('confidence', 0)*100:.0f}%" if resp.get('confidence') else 'N/A'
+                    'Confidence': f"{resp.get('confidence', 0):.0f}%" if resp.get('confidence') else 'N/A'
                 })
 
             responses_df = pd.DataFrame(responses_data)
