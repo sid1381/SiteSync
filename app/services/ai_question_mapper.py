@@ -250,14 +250,24 @@ Return JSON format:
                 if q_id in result:
                     data = result[q_id]
 
-                    # DIAGNOSTIC: Log specific test question responses
+                    # DIAGNOSTIC: Log test questions AND low confidence responses
                     is_test_question = any(test_q.lower() in q_text.lower() for test_q in test_questions)
-                    if is_test_question:
-                        logger.info(f"🎯 TRACE - Question: {q_text}")
+                    confidence = data.get('confidence', 50)
+                    answer = data.get('answer', 'No answer provided')
+
+                    # Log if: test question, low confidence, or suspicious answer
+                    should_log = (is_test_question or
+                                  confidence <= 20 or
+                                  answer in ['Manual review required', 'Requires manual review', 'No answer provided'])
+
+                    if should_log:
+                        prefix = "🎯 TRACE" if is_test_question else "⚠️  LOW CONFIDENCE"
+                        logger.info(f"{prefix} - Question: {q_text[:80]}")
                         logger.info(f"   AI Response: {json.dumps(data, indent=2)}")
-                        logger.info(f"   Answer: '{data.get('answer', 'No answer provided')}'")
-                        logger.info(f"   Confidence: {data.get('confidence', 50)}")
+                        logger.info(f"   Answer: '{answer}'")
+                        logger.info(f"   Confidence: {confidence}")
                         logger.info(f"   Category: {data.get('category', 'UNKNOWN')}")
+                        logger.info(f"   Reasoning: {data.get('reasoning', 'None')}")
                         logger.info("=" * 80)
 
                     mappings.append(AIQuestionMapping(
@@ -1228,33 +1238,60 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
             # Find the corresponding mapping for objective questions
             mapping = next((m for m in mappings if m.question_id == question_id), None)
 
-            # DIAGNOSTIC: Log filtering decision for test questions
-            if is_test_question:
-                if mapping:
+            # DIAGNOSTIC: Enhanced logging for all questionable mappings
+            exclusion_list = ['Manual review required', 'Requires manual review', 'No answer provided', 'Not processed', 'No data available']
+
+            if mapping:
+                confidence_pass = mapping.confidence_score > 15  # LOWERED threshold
+                value_exists = bool(mapping.mapped_value)
+                value_not_empty = bool(str(mapping.mapped_value).strip()) if mapping.mapped_value else False
+                not_excluded = mapping.mapped_value not in exclusion_list if mapping.mapped_value else False
+
+                # Log for test questions OR failed validations (helps debug why questions fail)
+                should_log = is_test_question or (not confidence_pass) or (value_exists and not not_excluded)
+
+                if should_log:
+                    logger.info(f"🔵 FILTER CHECK: {question_text[:80]}")
+                    logger.info(f"   Question ID: {question_id}")
+                    logger.info(f"   Is Objective: {is_objective}")
+                    logger.info(f"   Mapping source: {mapping.source}")
+                    logger.info(f"   Category: {mapping.mapped_field}")
+                    logger.info(f"   ✓ Confidence: {mapping.confidence_score:.1f}")
+                    logger.info(f"     → Pass threshold (>15)? {confidence_pass}")
+                    logger.info(f"   ✓ Mapped value: '{mapping.mapped_value}'")
+                    logger.info(f"     → Value exists? {value_exists}")
+                    logger.info(f"     → Not empty string? {value_not_empty}")
+                    logger.info(f"     → Not in exclusion list? {not_excluded}")
+                    logger.info(f"   Reasoning: {mapping.reasoning}")
+            else:
+                if is_test_question:
                     logger.info(f"🔵 FILTER CHECK: {question_text}")
-                    logger.info(f"   Mapping found: YES")
-                    logger.info(f"   Confidence: {mapping.confidence_score}")
-                    logger.info(f"   Confidence > 0.3? {mapping.confidence_score > 0.3}")
-                    logger.info(f"   Mapped value: '{mapping.mapped_value}'")
-                    logger.info(f"   Value is truthy? {bool(mapping.mapped_value)}")
-                    logger.info(f"   Value in exclusion list? {mapping.mapped_value in ['Manual review required', 'Requires manual review', 'No answer provided', 'Not processed']}")
-                else:
-                    logger.info(f"🔵 FILTER CHECK: {question_text}")
-                    logger.info(f"   Mapping found: NO")
+                    logger.info(f"   ❌ Mapping found: NO")
                     logger.info(f"   Reason: No mapping object found for question_id={question_id}")
 
             # Check if mapping has valid answer (not "Manual review required" or similar)
-            # LOWERED confidence threshold from 30 to 25 to catch more borderline cases
+            # LOWERED confidence threshold: 30 → 25 → 15 to catch more borderline cases
             has_valid_answer = (
                 mapping and
-                mapping.confidence_score > 25 and
+                mapping.confidence_score > 15 and  # LOWERED from 25 to 15
                 mapping.mapped_value and
                 str(mapping.mapped_value).strip() and  # Ensure it's not empty string
-                mapping.mapped_value not in ['Manual review required', 'Requires manual review', 'No answer provided', 'Not processed', 'No data available']
+                mapping.mapped_value not in exclusion_list
             )
 
-            if is_test_question:
-                logger.info(f"   HAS VALID ANSWER? {has_valid_answer}")
+            # Log final decision and explain rejections
+            if mapping and (is_test_question or (not has_valid_answer and mapping.confidence_score > 0)):
+                logger.info(f"   ➡️  FINAL DECISION: HAS VALID ANSWER? {has_valid_answer}")
+                if not has_valid_answer:
+                    # Explain WHY it failed
+                    if mapping.confidence_score <= 15:
+                        logger.info(f"   ❌ REJECTED: Confidence too low ({mapping.confidence_score:.1f} <= 15)")
+                    elif not mapping.mapped_value:
+                        logger.info(f"   ❌ REJECTED: No mapped value")
+                    elif not str(mapping.mapped_value).strip():
+                        logger.info(f"   ❌ REJECTED: Empty string value")
+                    elif mapping.mapped_value in exclusion_list:
+                        logger.info(f"   ❌ REJECTED: Value '{mapping.mapped_value}' in exclusion list")
                 logger.info("=" * 80)
 
             if has_valid_answer:
@@ -1285,17 +1322,37 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
 
             responses.append(response)
 
-        # DIAGNOSTIC: Summary statistics
+        # DIAGNOSTIC: Enhanced summary statistics with rejection reasons
         total_responses = len(responses)
         ai_answered = sum(1 for r in responses if r['source'] == 'ai_mapping')
         manual_required = sum(1 for r in responses if r['source'] == 'manual_required')
+        subjective_count = sum(1 for q in questions if not q.get('is_objective', True))
+        objective_count = total_responses - subjective_count
+
+        # Count rejection reasons for objective questions
+        objective_manual = sum(1 for i, r in enumerate(responses)
+                                if questions[i].get('is_objective', True) and r['source'] == 'manual_required')
+
         completion_pct = (ai_answered / total_responses * 100) if total_responses > 0 else 0
+        objective_completion = (ai_answered / objective_count * 100) if objective_count > 0 else 0
 
         logger.info("=" * 80)
         logger.info("📊 RESPONSE GENERATION SUMMARY")
         logger.info(f"   Total questions: {total_responses}")
-        logger.info(f"   AI answered: {ai_answered} ({completion_pct:.1f}%)")
+        logger.info(f"   Objective questions: {objective_count}")
+        logger.info(f"   Subjective questions: {subjective_count}")
+        logger.info(f"   ")
+        logger.info(f"   AI answered: {ai_answered} ({completion_pct:.1f}% total, {objective_completion:.1f}% of objective)")
         logger.info(f"   Manual required: {manual_required} ({100-completion_pct:.1f}%)")
+        logger.info(f"     → Subjective: {subjective_count}")
+        logger.info(f"     → Objective with no/low confidence answer: {objective_manual}")
+        logger.info(f"   ")
+        logger.info(f"   TARGET: 70%+ of OBJECTIVE questions answered")
+        logger.info(f"   CURRENT: {objective_completion:.1f}% of objective questions answered")
+        if objective_completion < 70:
+            logger.info(f"   ⚠️  BELOW TARGET - check logs above for rejection reasons")
+        else:
+            logger.info(f"   ✅ TARGET MET!")
         logger.info("=" * 80)
 
         return responses
