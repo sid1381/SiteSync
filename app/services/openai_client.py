@@ -77,12 +77,16 @@ class UnifiedOpenAIClient:
             if response_format:
                 kwargs["response_format"] = response_format
 
+        # Debug logging
+        logger.info(f"Calling OpenAI with model={self.model}, kwargs keys={list(kwargs.keys())}")
+
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content or ""
 
         # Log if response is unexpectedly empty
-        if not content and uses_new_api:
-            logger.warning(f"{self.model} returned empty response for prompt: {user_message[:100]}")
+        if not content:
+            logger.error(f"{self.model} returned empty response! Full response: {response}")
+            logger.error(f"Prompt was: {user_message[:200]}")
 
         return content
 

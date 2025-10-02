@@ -1343,7 +1343,7 @@ Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
                 prompt=prompt,
                 system_message="You are a question categorization expert. Categorize questions as OBJECTIVE (factual, auto-answerable from site data) or SUBJECTIVE (requires human judgment).",
                 temperature=0.1,
-                max_tokens=10
+                max_tokens=100  # Increased for gpt-5-mini reasoning tokens
             ).strip().upper()
 
             logger.info(f"✅ AI categorization result: '{result}' for question: {question_text[:60]}")
