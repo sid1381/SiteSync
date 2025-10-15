@@ -3,18 +3,20 @@
 ## Project Overview
 SiteSync transforms 60-minute manual sponsor surveys into 15-minute semi-automated assessments using AI-powered document processing and site matching. Research sites upload study protocols and receive automated feasibility assessments with confidence scoring.
 
-## System Status: ✅ PRODUCTION READY - BATCH PROCESSING OPTIMIZED
+## System Status: ✅ PRODUCTION READY - GPT-4O OPTIMIZED WITH GAP ANALYSIS
 
-### Latest Implementation Status (October 2, 2025 - Performance Update)
+### Latest Implementation Status (October 13, 2025 - GPT-4o Upgrade + FAANG-Level Quality)
+- **Model**: ✅ **Exclusive GPT-4o** - Flagship model for best reasoning + speed
 - **Performance**: ✅ **72x speedup** - 12 minutes → <10 seconds via batch processing
 - **API efficiency**: ✅ 114 individual calls → 1-2 batch calls (98% reduction)
-- **Model strategy**: ✅ Dual model approach (gpt-4o-mini primary + gpt-5-mini fallback)
+- **Gap analysis**: ✅ **Protocol-vs-Site comparison** - AI compares requirements to capabilities
 - **Survey workflow**: ✅ Complete end-to-end processing with AI-powered extraction
-- **Batch processing**: ✅ One API call processes all questions + categorization
+- **Batch processing**: ✅ One GPT-4o call processes all questions + categorization
 - **Pre-LLM heuristics**: ✅ 20-30% questions answered instantly (0 API calls)
 - **Protocol extraction**: ✅ Enhanced logging + integration with batch mapper
-- **Protocol integration**: ✅ Protocol data included in batch processing context
-- **Question mapping**: ✅ Type-aware mapping with protocol requirements
+- **Protocol integration**: ✅ Protocol requirements ALWAYS paired with site capabilities
+- **Question mapping**: ✅ Type-aware mapping with protocol-vs-site validation
+- **Semantic validation**: ✅ Post-processing to prevent wrong data types (age→equipment caught)
 - **Site profiles**: ✅ Comprehensive nested JSONB structure
 - **Data quality**: ✅ 100% profile completeness with rich mock data
 - **Bug fixes**: ✅ Confidence display (9500% → 95%), manual review filtering
@@ -26,7 +28,7 @@ SiteSync transforms 60-minute manual sponsor surveys into 15-minute semi-automat
 ### Backend Stack
 - **FastAPI** (Python 3.11) - Modern async web framework
 - **PostgreSQL 15** - Primary database with SQLAlchemy 2.0 ORM
-- **OpenAI API** - GPT-4o for AI extraction and requirement validation with automatic fallback
+- **OpenAI API** - **GPT-4o exclusively** for AI extraction, gap analysis, and requirement validation
 - **Docker + docker-compose** - Containerization
 
 ### Key Components
@@ -38,11 +40,11 @@ Survey Upload → Question Extraction → Site Profile Mapping → Response Gene
   Text/PDF    AI/Fallback Parse    Keyword Matching    Type-Safe Values   Accessible UI
 ```
 
-#### 2. AI-Powered Processing (Updated October 2, 2025 - BATCH PROCESSING)
+#### 2. AI-Powered Processing (Updated October 13, 2025 - GPT-4o WITH GAP ANALYSIS)
 
 **A. Batch Processing Architecture** (`ai_question_mapper.py:bulk_categorize_and_map`)
    - **Problem Solved**: 114 sequential API calls → 12+ minutes processing time
-   - **Solution**: Process ALL questions in ONE API call
+   - **Solution**: Process ALL questions in ONE GPT-4o call with protocol-vs-site gap analysis
    - **Performance**: 72x speedup (12 minutes → <10 seconds)
    - **API Efficiency**: 98% reduction (114 calls → 1-2 calls)
 
@@ -52,30 +54,65 @@ Survey Upload → Question Extraction → Site Profile Mapping → Response Gene
       - 0 API calls, 95% confidence
       - Example: "What is the age range?" → "18-75 years" (instant match)
 
-   2. **Batch AI Processing** (One API call for remaining questions)
-      - Compressed site summary (includes protocol requirements)
-      - Single JSON response with all categorizations + mappings
-      - Uses gpt-4o-mini for speed + reliability
+   2. **Batch GPT-4o Processing** (One API call for remaining questions)
+      - **Protocol-first summary**: Protocol requirements shown BEFORE site capabilities
+      - **Structured comparison**: Protocol (📋) vs Site (🏥) side-by-side for gap analysis
+      - **Question type detection**: Extracts values for "what is", performs validation for "can site"
+      - **Gap analysis reasoning**: Compares protocol needs to site capabilities with detailed explanations
+      - Single JSON response with all categorizations + answers + reasoning
+      - Max tokens: 6000 for detailed gap analysis across many questions
 
-   3. **Fallback Individual Processing** (if batch fails)
-      - Falls back to individual calls if needed
-      - Uses gpt-5-mini for complex reasoning
+   3. **Post-Processing Validation** (semantic correctness)
+      - **FAANG-level quality check**: Validates answer semantics match question type
+      - Catches mismatches: age→equipment, equipment→age, "how many"→Yes/No, etc.
+      - Auto-corrects with logging: "Age question answered with equipment - corrected to standard age range"
+      - Reduces GPT-4o hallucinations and ensures data type consistency
 
-**B. Dual Model Strategy** (`openai_client.py`)
-   - **gpt-4o-mini** (Primary): Fast bulk operations
-     - Parameters: max_tokens, temperature, response_format
-     - Best for: Categorization, standard mapping, batch processing
-   - **gpt-5-mini** (Fallback): Complex reasoning
-     - Parameters: max_completion_tokens only
-     - Best for: Edge cases, ambiguous questions
+**B. GPT-4o Exclusive Model** (`openai_client.py`)
+   - **gpt-4o** (Flagship): Best reasoning + speed + reliability
+     - Parameters: max_tokens (default 4000), temperature (0.1), response_format (json_object)
+     - Supports structured JSON outputs natively
+     - Optimized for high TPM tier accounts
+     - Used for: Question extraction, protocol extraction, batch mapping, gap analysis
+   - **No fallback models**: GPT-4o handles all scenarios (simple + complex)
 
-**C. GPT-4o Universal Question Extraction** (`universal_survey_parser.py`)
+**C. Protocol-vs-Site Gap Analysis** (`ai_question_mapper.py:_create_compressed_site_summary`)
+   - **Critical Innovation**: Protocol requirements and site capabilities ALWAYS sent together
+   - **Structured Format**:
+     ```
+     ============================================================
+     PROTOCOL REQUIREMENTS (What the study needs)
+     ============================================================
+     📋 Phase: Phase III
+     📋 Enrollment Target: 30 patients
+     📋 Required Equipment: FibroScan, MRI-PDFF, ECG
+     📋 Required Staff: PI (Hepatology specialization)
+     📋 Required Population: NASH patients, ages 18-75
+
+     ============================================================
+     SITE CAPABILITIES (What the site has)
+     ============================================================
+     🏥 Annual Patient Volume: 50,000
+     🏥 NASH patients: 1,200 patients/year
+     🏥 Principal Investigator: Dr. Jane Doe (Hepatology, 20 years)
+     🏥 Imaging Equipment: MRI, CT, FibroScan, Ultrasound
+     🏥 Age Groups Treated: 18-65 years
+
+     💡 COMPARE the protocol requirements (📋) with site capabilities (🏥)
+     ```
+   - **Gap Analysis Examples**:
+     - Protocol needs 30 patients + Site has 1,200 NASH patients → "Yes, site can easily recruit 30 from 1,200 annual NASH patients"
+     - Protocol needs 18-75 age + Site treats 18-65 → "Partially, site treats 18-65 but protocol needs up to 75 years"
+     - Protocol needs Hepatology PI + Site has Hepatology PI → "Yes, Dr. Jane Doe has 20 years hepatology experience"
+     - Protocol needs FibroScan + Site lacks it → "No, site lacks FibroScan device (protocol critical requirement)"
+
+**D. GPT-4o Universal Question Extraction** (`universal_survey_parser.py`)
    - Works with ANY sponsor format (Pfizer, Novartis, UAB, Merck, CROs)
-   - Trusts AI to identify questions - no aggressive validation
+   - Trusts GPT-4o to identify questions - no aggressive validation
    - Only filters 8 exact metadata strings (Date:, Signature:, Completed by:, etc.)
    - AI adapts to different formats instead of hardcoded rules
 
-**D. Triple-Layer Question Categorization** (`universal_survey_parser.py`)
+**E. Triple-Layer Question Categorization** (`universal_survey_parser.py`)
    - **Layer 1 - Rule-Based Pre-Check**: 12 obvious OBJECTIVE patterns (age, phase, participants, duration, etc.) + 4 SUBJECTIVE patterns (foresee, anticipate, manageable)
      - High confidence (0.95) - skips AI entirely
      - Example: "What is the population age?" → OBJECTIVE (rule match)
@@ -86,39 +123,44 @@ Survey Upload → Question Extraction → Site Profile Mapping → Response Gene
    - **Layer 3 - Post-AI Override**: If AI says SUBJECTIVE but question starts with "What is/How many/How long" → Force OBJECTIVE
    - **Result**: 70%+ objective accuracy (was 29% with old system)
 
-**E. Universal Protocol Extraction** (`protocol_requirement_extractor.py`)
+**F. Universal Protocol Extraction** (`protocol_requirement_extractor.py`)
    - 7 comprehensive categories: Study Identification, Timeline, Patient Population, Staff, Equipment, Procedures, Drug/Treatment
-   - Extracts specific data: phase, duration, enrollment target, age range, equipment specs, staff requirements
-   - Enhanced logging for debugging (prompt preview, extraction counts, critical UAB data)
+   - Uses GPT-4o to extract specific data: phase, duration, enrollment target, age range, equipment specs, staff requirements
+   - Enhanced logging for debugging (prompt preview, extraction counts, critical data verification)
    - Protocol data integrated into batch processing summary
    - Works universally across all sponsor formats (Pfizer, Novartis, Merck, academic, CROs)
 
-**F. Type-Aware Question Mapping** (`ai_question_mapper.py`)
-   - **Numeric questions** (What is, How many, How long) → Return VALUE from protocol/site
-     - "What is the phase?" → "Phase III" (not "Yes, site can conduct Phase III")
-   - **Capability questions** (Is, Does, Can) → Validate if site meets requirements
-     - "Is equipment available?" → "Yes, site has FibroScan" OR "No, site lacks..."
-   - **Time estimation questions** → Special handling
-     - "How many hours for recruitment?" → "Unable to determine specific hours" (not gap analysis)
-   - **Requirement validation**: Compares protocol requirements to site capabilities with gap analysis
-   - **Placeholder filtering**: Excludes "Manual review required" from valid answers
+**G. Semantic Validation Layer** (`ai_question_mapper.py:_validate_answer_semantics`)
+   - **Post-processing quality check** - FAANG-level validation after GPT-4o response
+   - **Pattern Detection**:
+     - Age questions → Must return age ranges (e.g., "18-75 years"), NOT equipment
+     - Equipment questions → Must return equipment lists, NOT ages
+     - "How many" questions → Must return numbers, NOT Yes/No
+     - "What is" questions → Must return specific values, NOT Yes/No
+     - "Who is" questions → Must return names or "Unknown", NOT numbers
+     - Yes/No questions → Must start with "Yes", "No", "Partially", or "Unable to determine"
+     - Binary choice questions → Must return one option, NOT Yes/No
+   - **Auto-Correction**: If mismatch detected, corrects answer and logs warning
+     - Example: "Age question answered with equipment - corrected to standard age range"
+   - **Result**: Reduces hallucinations and ensures semantic correctness
 
-**G. Fallback Processing** (when AI unavailable)
+**H. Fallback Processing** (when AI unavailable)
    - PyPDF2 + text parsing
    - Keyword-based categorization
    - Simple keyword mapping
 
-#### 3. Core Services (Updated October 2, 2025)
-- **`ai_question_mapper.py`** - **Batch processing engine** (114 calls → 1-2 calls)
+#### 3. Core Services (Updated October 13, 2025 - GPT-4o Upgrade)
+- **`ai_question_mapper.py`** - **Batch processing engine with gap analysis** (114 calls → 1-2 calls)
   - `bulk_categorize_and_map()`: Main batch processing entry point
-  - `_apply_heuristics()`: Pre-LLM pattern matching
-  - `_batch_categorize_and_map_with_ai()`: Single API call for all questions
-  - `_create_compressed_site_summary()`: Includes protocol requirements
+  - `_apply_heuristics()`: Pre-LLM pattern matching (20-30% instant answers)
+  - `_batch_categorize_and_map_with_ai()`: Single GPT-4o call for all questions
+  - `_create_compressed_site_summary()`: Protocol-first, then site capabilities (enables gap analysis)
+  - `_validate_answer_semantics()`: Post-processing semantic validation
   - Type-aware mapping + placeholder filtering
-- **`openai_client.py`** - **Dual model support** (gpt-4o-mini + gpt-5-mini)
-  - Model detection and parameter routing
-  - `chat_completion()`: Handles both model types
-  - `create_json_completion()`: JSON-formatted responses
+- **`openai_client.py`** - **GPT-4o exclusive client**
+  - Hardcoded to "gpt-4o" (ignores env variables for consistency)
+  - `chat_completion()`: Standard GPT-4o completions (max_tokens, temperature)
+  - `create_json_completion()`: JSON-formatted responses with native response_format support
 - **`universal_survey_parser.py`** - AI-powered universal question extraction + triple-layer categorization
 - **`protocol_requirement_extractor.py`** - Universal 7-category protocol extraction with enhanced logging
 - **`autofill_engine.py`** - Main survey processing orchestration (calls batch processing)

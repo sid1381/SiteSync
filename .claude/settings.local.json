@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(chmod:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git pull:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(cat:*)",
+      "Bash(export LLM_MODEL=gpt-4o)",
+      "Bash(export LLM_FALLBACK_MODEL=gpt-4o)",
+      "Bash(curl -X POST \"http://localhost:8000/surveys/create\" )",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

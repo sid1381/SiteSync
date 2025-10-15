@@ -1175,8 +1175,14 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
         """
         question_text = question_data.get('text', '')
 
+        # 🔍 TRUNCATION DEBUG: Log extracted length
+        logger.info(f"📏 EXTRACTED LENGTH: {len(question_text)} chars: {question_text}")
+
         # Clean the question text to ensure no numbering or prefixes remain
         question_text = self._clean_question_text(question_text)
+
+        # 🔍 TRUNCATION DEBUG: Log after cleaning
+        logger.info(f"📏 AFTER CLEANING LENGTH: {len(question_text)} chars: {question_text}")
 
         # TRUST THE AI - Only filter exact metadata strings (not validation)
         # GPT-4o is smart enough to know what a question is
@@ -1228,12 +1234,15 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
         """
         Categorize question as objective (auto-fillable) or subjective using AI-based analysis
         """
+        # 🔍 TRUNCATION DEBUG: Log categorization length
+        logger.info(f"📏 CATEGORIZATION LENGTH: {len(question_text)} chars")
         logger.info(f"🔍 Categorizing question: {question_text[:80]}")
 
         # RULE-BASED PRE-CHECK: Override for obviously objective questions
         text_lower = question_text.lower()
 
-        # These are ALWAYS objective - they have factual numeric or specific answers
+        # These are ALWAYS objective - they have factual numeric or specific answers FROM PROTOCOL
+        # CRITICAL: Only include questions that ask for PROTOCOL DATA, not site judgment
         obvious_objective_patterns = [
             r'what\s+is\s+the\s+(protocol\s+)?phase',
             r'what\s+is\s+the\s+population\s+age',
@@ -1242,37 +1251,13 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
             r'how\s+many\s+participants',
             r'what\s+is\s+the\s+duration',
             r'how\s+long\s+is\s+the\s+study',
-            r'what\s+is\s+the\s+budget',
             r'what\s+is\s+the\s+enrollment\s+target',
             r'what\s+equipment\s+is\s+required',
+            r'what\s+procedures\s+are\s+required',
             r'what\s+is\s+the\s+therapeutic\s+area',
             r'what\s+is\s+the\s+indication',
-            # Complexity questions - protocol shows factual data about structure
-            r'is.*protocol.*complex',
-            r'is.*dosing.*schedule.*complex',
-            r'does.*study.*require.*time.*intensive.*pk',
-            r'does.*study.*require.*pk.*sampling',
-            r'are.*procedures.*complex',
-            r'is.*study.*design.*complex',
-            # Capability assessment questions - can compare protocol needs vs site capabilities
-            r'is\s+there\s+adequate\s+staff',
-            r'are\s+additional\s+specialists?\s+(needed|required)',
-            r'is\s+additional\s+training\s+(necessary|required)',
-            r'will\s+(the\s+)?coordination.*departments?',
-            r'does.*site.*have.*required.*equipment',
-            r'can.*site.*provide.*required.*staff',
-            r'are.*facilities.*adequate',
-            # Realistic/feasibility questions - factual comparisons of protocol vs site
-            r'is.*number.*participants.*realistic',  # Compare enrollment target vs patient pool
-            r'is.*enrollment.*realistic',             # Compare enrollment numbers
-            r'are.*additional.*specialists',          # Compare specialty requirements vs site staff
-            r'do.*visits.*seem.*complex',             # Protocol visit schedule is factual data
-            r'is.*duration.*realistic',               # Protocol duration is factual
-            r'is.*study.*duration.*realistic',        # Protocol duration comparison
-            r'visits.*complex.*time',                 # Visit complexity from protocol data
-            # Access and budget questions - factual comparisons
-            r'do.*we.*have.*access.*to.*(participant|patient).*population',  # Compare enrollment vs patient volume
-            r'will.*budget.*cover.*expenses',         # Compare protocol budget vs site costs (if budget exists)
+            r'what\s+is\s+the\s+dosing\s+schedule',
+            r'does.*study.*require.*pk.*sampling',  # Factual from protocol
         ]
 
         for pattern in obvious_objective_patterns:
@@ -1280,12 +1265,26 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
                 logger.info(f"✓ RULE-BASED OVERRIDE → OBJECTIVE (matches pattern: {pattern}): {question_text[:60]}")
                 return True, 0.95  # High confidence for rule-based
 
-        # These are ALWAYS subjective - they require prediction/opinion
+        # These are ALWAYS subjective - they require site judgment/opinion/assessment
         obvious_subjective_patterns = [
+            # Predictions and opinions
             r'do\s+you\s+(foresee|anticipate|expect|predict)',
             r'what\s+(challenges|concerns|issues)\s+do\s+you\s+anticipate',
             r'is\s+(the\s+)?(workload|study)\s+manageable',
             r'will\s+(patients|participants)\s+(be\s+willing|comply|miss\s+work)',
+            # Site capability assessments (require site judgment, not just data comparison)
+            r'is.*realistic',  # "Is enrollment realistic?" requires site judgment
+            r'do.*we.*have.*access',  # "Do we have access to population?" requires site assessment
+            r'do.*you.*have.*access',
+            r'can.*you.*provide',  # "Can you provide X?" requires commitment/judgment
+            r'will.*you.*need',  # "Will you need X?" requires assessment
+            r'is.*this.*study.*(clinical|academic)',  # Opinion question
+            r'do.*visits.*seem.*complex',  # "seem" = opinion
+            r'is.*additional.*training.*necessary',  # Site must assess training needs
+            r'will.*study.*require.*(extended|work.*hours|weekends|on.*call)',  # Site scheduling assessment
+            r'will.*budget.*cover',  # Budget assessment requires site-specific calculation
+            r'are.*facilities.*adequate',  # "adequate" = judgment word
+            r'is.*there.*adequate',  # "adequate" = judgment word
         ]
 
         for pattern in obvious_subjective_patterns:
@@ -1299,42 +1298,43 @@ Return a JSON array of question objects. Extract using UNIVERSAL PATTERNS only.
 
 Question: "{question_text}"
 
-STRICT RULES:
-1. Questions with NUMERIC or SPECIFIC answers from protocol/site = OBJECTIVE
-   - Ages, numbers, phases, durations, equipment lists, staff counts
-   - Examples: "What is the population age?" (18-75), "How many participants?" (200), "What is the phase?" (Phase II)
+STRICT RULES FOR OBJECTIVE:
+✅ OBJECTIVE = Question asks for PROTOCOL DATA that can be extracted from documents
+   - "What is the phase?" → Protocol states "Phase II"
+   - "How many participants?" → Protocol states "200 patients"
+   - "What equipment is required?" → Protocol lists equipment
+   - "What is the duration?" → Protocol states "48 weeks"
 
-2. ALL "WHAT/HOW MANY/HOW LONG" questions about protocol/site = OBJECTIVE
-   - These ask for FACTS, not opinions
-   - "What is..." → OBJECTIVE (unless asking for opinion like "What do you think...")
-   - "How many..." → OBJECTIVE (always asking for count)
-   - "How long..." → OBJECTIVE (always asking for duration)
+❌ NOT OBJECTIVE = Question requires SITE JUDGMENT, even if comparing to protocol
+   - "Is enrollment realistic?" → Site must assess their capacity
+   - "Do we have access to population?" → Site must assess their patient base
+   - "Will budget cover expenses?" → Site must calculate their costs
+   - "Is training necessary?" → Site must assess staff capabilities
+   - "Will this require extended hours?" → Site must assess scheduling
+   - "Are facilities adequate?" → Site must judge sufficiency
 
-3. ONLY "DO YOU THINK/ANTICIPATE/FORESEE/EXPECT" = SUBJECTIVE
-   - These ask for PREDICTIONS or OPINIONS
-   - "Do you foresee..." → SUBJECTIVE
-   - "What challenges do you anticipate..." → SUBJECTIVE
-   - "Is workload manageable..." → SUBJECTIVE
+CRITICAL: Questions with these words are ALMOST ALWAYS SUBJECTIVE:
+- "realistic", "adequate", "sufficient", "appropriate"
+- "seem", "appear", "likely"
+- "Do we/you have access..."
+- "Can you/we provide..."
+- "Will you/we need..."
+- "Is this necessary/required" (when asking about SITE, not protocol)
 
-ALWAYS OBJECTIVE (factual data exists):
-- "What is the population age?" → OBJECTIVE (Protocol: 18-75 years)
-- "What is the number of participants?" → OBJECTIVE (Protocol: 200 patients)
-- "What is the participant health status?" → OBJECTIVE (Protocol: NASH with F2-F3 fibrosis)
-- "What type of treatment population is required?" → OBJECTIVE (Protocol inclusion criteria)
-- "What is the protocol phase?" → OBJECTIVE (Protocol: Phase I/II/III/IV)
-- "How long is the study?" → OBJECTIVE (Protocol: 48 weeks)
-- "What equipment is required?" → OBJECTIVE (Protocol: FibroScan, MRI, etc.)
-- "Will budget cover expenses?" → OBJECTIVE (Protocol budget vs site costs)
-- "Is adequate staff available?" → OBJECTIVE (Protocol needs vs site staff)
+OBJECTIVE EXAMPLES (Protocol data extraction):
+- "What is the population age?" → OBJECTIVE (Protocol: "18-75 years")
+- "What is the phase?" → OBJECTIVE (Protocol: "Phase II")
+- "What procedures are required?" → OBJECTIVE (Protocol lists procedures)
+- "How long is the study?" → OBJECTIVE (Protocol: "48 weeks")
 
-ONLY SUBJECTIVE (prediction/opinion needed):
-- "Do you foresee IRB problems?" → SUBJECTIVE (Prediction)
-- "What challenges do you anticipate?" → SUBJECTIVE (Opinion)
-- "Is workload manageable for your team?" → SUBJECTIVE (Judgment)
-- "Will patients be willing to participate?" → SUBJECTIVE (Speculation)
-- "Do you expect adverse events?" → SUBJECTIVE (Prediction)
-
-CRITICAL OVERRIDE: If question starts with "What is..." or "How many..." or "How long..." → ALMOST ALWAYS OBJECTIVE
+SUBJECTIVE EXAMPLES (Site judgment required):
+- "Is enrollment realistic?" → SUBJECTIVE (Site must assess capacity)
+- "Do we have access to population?" → SUBJECTIVE (Site must assess patient base)
+- "Will budget cover expenses?" → SUBJECTIVE (Site must calculate costs)
+- "Is training necessary?" → SUBJECTIVE (Site must assess staff readiness)
+- "Do visits seem complex?" → SUBJECTIVE ("seem" = opinion)
+- "Will this require extended hours?" → SUBJECTIVE (Site scheduling judgment)
+- "Is this for clinical or academic reasons?" → SUBJECTIVE (Opinion)
 
 Return ONLY one word: OBJECTIVE or SUBJECTIVE"""
 
