@@ -91,15 +91,24 @@ class AIQuestionMapper:
         return filtered_mappings
 
     def _apply_heuristics(self, question: Dict, site_profile: Dict) -> Optional[AIQuestionMapping]:
-        """Apply simple pattern matching for obvious questions"""
+        """
+        Apply simple pattern matching for obvious questions
+
+        CRITICAL: All heuristic responses now go through semantic validation
+        to prevent mismatches (e.g., age data for workload questions)
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
         q_text = question.get('text', '').lower()
         q_id = question.get('id', '')
+        original_question_text = question.get('text', '')
 
         # Age-related questions → OBJECTIVE
         if any(pattern in q_text for pattern in ['age', 'years old', 'age range', 'age group']):
-            return AIQuestionMapping(
+            heuristic_mapping = AIQuestionMapping(
                 question_id=q_id,
-                question_text=question.get('text', ''),
+                question_text=original_question_text,
                 mapped_field='age_groups',
                 mapped_value='18-75 years',
                 confidence_score=95.0,
@@ -107,46 +116,141 @@ class AIQuestionMapper:
                 reasoning='Age question detected by keyword matching'
             )
 
+            # CRITICAL: Validate heuristic response to catch semantic mismatches
+            validated_answer, validated_confidence, validation_note = self._validate_answer_semantics(
+                question_text=original_question_text,
+                answer='18-75 years',
+                confidence=95.0
+            )
+
+            # If validation changed the answer, log and update
+            if validated_answer != '18-75 years' or validated_confidence != 95.0:
+                logger.warning(f"🔧 HEURISTIC VALIDATION CORRECTION")
+                logger.warning(f"   Question: {original_question_text}")
+                logger.warning(f"   Original heuristic answer: '18-75 years'")
+                logger.warning(f"   Corrected answer: '{validated_answer}'")
+                logger.warning(f"   Reason: {validation_note}")
+                logger.warning("=" * 80)
+
+                heuristic_mapping.mapped_value = validated_answer
+                heuristic_mapping.confidence_score = validated_confidence
+                heuristic_mapping.reasoning = f"{heuristic_mapping.reasoning} [Validated: {validation_note}]"
+
+            return heuristic_mapping
+
         # Equipment questions → OBJECTIVE
         if any(pattern in q_text for pattern in ['equipment', 'mri', 'ct scan', 'imaging', 'facilities']):
             equipment = site_profile.get('facilities_and_equipment', {}).get('imaging_capabilities', [])
             if equipment:
-                return AIQuestionMapping(
+                equipment_answer = ', '.join(equipment[:3])
+                heuristic_mapping = AIQuestionMapping(
                     question_id=q_id,
-                    question_text=question.get('text', ''),
+                    question_text=original_question_text,
                     mapped_field='imaging_equipment',
-                    mapped_value=', '.join(equipment[:3]),
+                    mapped_value=equipment_answer,
                     confidence_score=90.0,
                     source='heuristic_pattern',
                     reasoning='Equipment question matched to facilities data'
                 )
 
+                # CRITICAL: Validate heuristic response
+                validated_answer, validated_confidence, validation_note = self._validate_answer_semantics(
+                    question_text=original_question_text,
+                    answer=equipment_answer,
+                    confidence=90.0
+                )
+
+                # If validation changed the answer, log and update
+                if validated_answer != equipment_answer or validated_confidence != 90.0:
+                    logger.warning(f"🔧 HEURISTIC VALIDATION CORRECTION")
+                    logger.warning(f"   Question: {original_question_text}")
+                    logger.warning(f"   Original heuristic answer: '{equipment_answer}'")
+                    logger.warning(f"   Corrected answer: '{validated_answer}'")
+                    logger.warning(f"   Reason: {validation_note}")
+                    logger.warning("=" * 80)
+
+                    heuristic_mapping.mapped_value = validated_answer
+                    heuristic_mapping.confidence_score = validated_confidence
+                    heuristic_mapping.reasoning = f"{heuristic_mapping.reasoning} [Validated: {validation_note}]"
+
+                return heuristic_mapping
+
         # Staff count questions → OBJECTIVE
         if 'coordinator' in q_text and ('how many' in q_text or 'number' in q_text):
             coords = site_profile.get('staff_and_experience', {}).get('study_coordinators', {})
             count = coords.get('count', 4)
-            return AIQuestionMapping(
+            count_answer = str(count)
+
+            heuristic_mapping = AIQuestionMapping(
                 question_id=q_id,
-                question_text=question.get('text', ''),
+                question_text=original_question_text,
                 mapped_field='coordinator_count',
-                mapped_value=str(count),
+                mapped_value=count_answer,
                 confidence_score=95.0,
                 source='heuristic_pattern',
                 reasoning='Coordinator count question matched to staff data'
             )
 
+            # CRITICAL: Validate heuristic response
+            validated_answer, validated_confidence, validation_note = self._validate_answer_semantics(
+                question_text=original_question_text,
+                answer=count_answer,
+                confidence=95.0
+            )
+
+            # If validation changed the answer, log and update
+            if validated_answer != count_answer or validated_confidence != 95.0:
+                logger.warning(f"🔧 HEURISTIC VALIDATION CORRECTION")
+                logger.warning(f"   Question: {original_question_text}")
+                logger.warning(f"   Original heuristic answer: '{count_answer}'")
+                logger.warning(f"   Corrected answer: '{validated_answer}'")
+                logger.warning(f"   Reason: {validation_note}")
+                logger.warning("=" * 80)
+
+                heuristic_mapping.mapped_value = validated_answer
+                heuristic_mapping.confidence_score = validated_confidence
+                heuristic_mapping.reasoning = f"{heuristic_mapping.reasoning} [Validated: {validation_note}]"
+
+            return heuristic_mapping
+
         # Subjective questions (skip AI, mark as subjective)
+        # CRITICAL: This catches 'adequate', 'sufficient' - NOT 'manageable' or 'workload'
         if any(pattern in q_text for pattern in ['adequate', 'sufficient', 'comfortable', 'willing', 'able to']):
-            return AIQuestionMapping(
+            subjective_answer = 'Requires manual review'
+
+            heuristic_mapping = AIQuestionMapping(
                 question_id=q_id,
-                question_text=question.get('text', ''),
+                question_text=original_question_text,
                 mapped_field='subjective_question',
-                mapped_value='Requires manual review',
+                mapped_value=subjective_answer,
                 confidence_score=50.0,
                 source='heuristic_subjective',
                 reasoning='Subjective question detected, requires manual input'
             )
 
+            # CRITICAL: Validate heuristic response
+            validated_answer, validated_confidence, validation_note = self._validate_answer_semantics(
+                question_text=original_question_text,
+                answer=subjective_answer,
+                confidence=50.0
+            )
+
+            # If validation changed the answer, log and update
+            if validated_answer != subjective_answer or validated_confidence != 50.0:
+                logger.warning(f"🔧 HEURISTIC VALIDATION CORRECTION")
+                logger.warning(f"   Question: {original_question_text}")
+                logger.warning(f"   Original heuristic answer: '{subjective_answer}'")
+                logger.warning(f"   Corrected answer: '{validated_answer}'")
+                logger.warning(f"   Reason: {validation_note}")
+                logger.warning("=" * 80)
+
+                heuristic_mapping.mapped_value = validated_answer
+                heuristic_mapping.confidence_score = validated_confidence
+                heuristic_mapping.reasoning = f"{heuristic_mapping.reasoning} [Validated: {validation_note}]"
+
+            return heuristic_mapping
+
+        # No heuristic match - let batch AI processing handle it
         return None
 
     def _can_reclassify_to_objective(self, mapping: Optional[AIQuestionMapping], question_text: str, logger, site_data: Dict = None, protocol_data: Dict = None) -> bool:
