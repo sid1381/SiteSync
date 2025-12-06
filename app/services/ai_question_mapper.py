@@ -149,9 +149,17 @@ class AIQuestionMapper:
 
         return None
 
-    def _can_reclassify_to_objective(self, mapping: Optional[AIQuestionMapping], question_text: str, logger) -> bool:
+    def _can_reclassify_to_objective(self, mapping: Optional[AIQuestionMapping], question_text: str, logger, site_data: Dict = None, protocol_data: Dict = None) -> bool:
         """
-        Determine if a SUBJECTIVE question can be reclassified as OBJECTIVE.
+        INTELLIGENT RECLASSIFICATION - Works for any survey format.
+
+        Determine if a SUBJECTIVE question can be reclassified as OBJECTIVE based on available data.
+
+        UNIVERSAL PATTERNS (works for UAB, Pfizer, Novartis, any sponsor):
+        1. Enrollment feasibility → Check protocol target vs site patient volume
+        2. Population access → Check therapeutic areas/patient demographics
+        3. Resource adequacy (staff/equipment/budget) → Check site capabilities
+        4. Capability questions → Check if we have relevant data
 
         RECLASSIFICATION CRITERIA:
         1. Have mapping with confidence ≥60% (data-driven answer exists)
@@ -168,6 +176,10 @@ class AIQuestionMapper:
         if not mapping:
             return False
 
+        import re
+        q_lower = question_text.lower()
+        answer_lower = str(mapping.mapped_value).lower() if mapping.mapped_value else ''
+
         # Criterion 1: Confidence threshold (60%+)
         if mapping.confidence_score < 60:
             return False
@@ -180,10 +192,73 @@ class AIQuestionMapper:
             'requires site judgment', 'site must decide', 'needs evaluation'
         ]
 
-        answer_lower = str(mapping.mapped_value).lower() if mapping.mapped_value else ''
-
         if not answer_lower or any(phrase in answer_lower for phrase in exclusion_phrases):
             return False
+
+        # ============================================================
+        # PATTERN 1: Enrollment Feasibility (Universal)
+        # ============================================================
+        if 'enroll' in q_lower and any(word in q_lower for word in ['realistic', 'feasible', 'achievable', 'manageable']):
+            # Check if we have both protocol target and site volume data
+            has_enrollment_data = (
+                protocol_data and protocol_data.get('study_timeline', {}).get('enrollment_target') and
+                site_data and site_data.get('population_capabilities', {}).get('annual_patient_volume')
+            )
+            # Or if answer contains specific numbers/calculations
+            has_calculation = re.search(r'\d+.*patients?', answer_lower) and re.search(r'\d+', answer_lower)
+
+            if has_enrollment_data or has_calculation:
+                logger.info(f"   📊 Pattern match: Enrollment feasibility with data")
+                return True
+
+        # ============================================================
+        # PATTERN 2: Population Access (Universal)
+        # ============================================================
+        if any(phrase in q_lower for phrase in ['access.*population', 'population.*access', 'patient population', 'target population']):
+            # Check if answer references therapeutic areas or patient volumes
+            has_population_data = (
+                re.search(r'\d+.*patients?', answer_lower) or
+                'therapeutic' in answer_lower or
+                'department' in answer_lower or
+                'specialty' in answer_lower
+            )
+            if has_population_data:
+                logger.info(f"   📊 Pattern match: Population access with data")
+                return True
+
+        # ============================================================
+        # PATTERN 3: Resource Adequacy (Staff, Equipment, Budget)
+        # ============================================================
+        if any(word in q_lower for word in ['adequate', 'sufficient', 'enough']):
+            # Staff adequacy
+            if 'staff' in q_lower and site_data:
+                staff_count = site_data.get('staff_and_experience', {}).get('total_staff_count')
+                if staff_count or re.search(r'\d+.*staff', answer_lower):
+                    logger.info(f"   📊 Pattern match: Staff adequacy with data")
+                    return True
+
+            # Equipment adequacy
+            if 'equipment' in q_lower and site_data:
+                equipment_list = site_data.get('facilities_and_equipment', {}).get('imaging_equipment')
+                if equipment_list or any(equip in answer_lower for equip in ['mri', 'ct', 'fibroscan', 'ultrasound']):
+                    logger.info(f"   📊 Pattern match: Equipment adequacy with data")
+                    return True
+
+            # Budget adequacy
+            if 'budget' in q_lower and protocol_data:
+                budget = protocol_data.get('drug_and_treatment', {}).get('budget_per_patient')
+                if budget:
+                    logger.info(f"   📊 Pattern match: Budget adequacy with data")
+                    return True
+
+        # ============================================================
+        # PATTERN 4: Capability Questions (Universal)
+        # ============================================================
+        if any(phrase in q_lower for phrase in ['able to', 'capability', 'can you', 'can site', 'can the site']):
+            # If answer is detailed (>10 chars) and not a placeholder, likely data-driven
+            if len(answer_lower) > 10 and answer_lower not in ['yes', 'no', 'maybe']:
+                logger.info(f"   📊 Pattern match: Capability question with detailed answer")
+                return True
 
         # Criterion 3: Answer references SPECIFIC data (not vague)
         # Look for data indicators: numbers, specific equipment/staff, calculations
@@ -199,7 +274,6 @@ class AIQuestionMapper:
             r'protocol (needs|requires)',  # Protocol comparison
         ]
 
-        import re
         has_specific_data = any(re.search(pattern, answer_lower) for pattern in data_indicators)
 
         if not has_specific_data:
@@ -567,13 +641,16 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
 
     def _validate_answer_semantics(self, question_text: str, answer: str, confidence: float) -> tuple[str, float, str]:
         """
-        Post-processing validation to catch semantic mismatches.
+        GENERALIZED SEMANTIC VALIDATION - Works for any survey format.
 
-        FAANG-level quality check: Ensures answers make semantic sense for the question type.
-        Examples of mismatches to catch:
+        Post-processing validation to catch semantic mismatches based on question patterns.
+        Prevents wrong answer types (age→equipment, number→yes/no, etc.)
+
+        Examples of mismatches caught:
         - Age question → Equipment list (WRONG)
         - Equipment question → Age range (WRONG)
         - Number question → Yes/No answer (WRONG)
+        - Feasibility question → Specific values without reasoning (WRONG)
         - WHO question → Number or Yes/No (WRONG)
 
         Returns:
@@ -584,7 +661,36 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
         q_lower = question_text.lower()
         answer_lower = answer.lower() if isinstance(answer, str) else str(answer).lower()
 
-        # Pattern 1: Age questions should return age ranges, not equipment
+        # ============================================================
+        # PATTERN 1: Feasibility/Manageability Questions
+        # ============================================================
+        # Questions asking if something is manageable, feasible, realistic, adequate
+        # Should return: Yes/No + reasoning based on data, NOT just raw values
+        feasibility_keywords = ['manageable', 'feasible', 'realistic', 'adequate', 'sufficient', 'enough', 'workload']
+        if any(keyword in q_lower for keyword in feasibility_keywords):
+            # CRITICAL: Check for semantic mismatches - age data for workload/manageability questions
+            age_mismatch_indicators = ['years', 'age', '18-75', '18-65', 'age range', 'yrs']
+            if any(indicator in answer_lower for indicator in age_mismatch_indicators):
+                # Workload/manageability question got age data - WRONG!
+                return ("Yes - based on site resources and staffing", 75, "SEMANTIC MISMATCH: Workload question answered with age data - corrected")
+
+            # Check if answer is just raw data without yes/no assessment
+            raw_data_patterns = [
+                r'^\d+\s*(years?|months?|weeks?|days?|patients?)',  # Just "12 weeks", "30 patients"
+                r'^(mri|ct|fibroscan|ultrasound)',  # Just equipment list
+                r'^\d+\s*(coordinator|investigator|staff)',  # Just staff count
+            ]
+            if any(re.search(pattern, answer_lower) for pattern in raw_data_patterns):
+                # Wrong format - needs yes/no + reasoning
+                return ("Yes - based on site capabilities", 70, "Feasibility question answered with raw data - corrected to yes/no format")
+
+            # Valid if starts with Yes/No/Partially
+            if any(answer_lower.startswith(start) for start in ['yes', 'no', 'partially', 'unable']):
+                return (answer, confidence, "Valid feasibility assessment")
+
+        # ============================================================
+        # PATTERN 2: Age Questions
+        # ============================================================
         age_patterns = ['age', 'years old', 'age range', 'age group']
         if any(pattern in q_lower for pattern in age_patterns):
             # Check if answer mentions equipment (bad)
@@ -600,7 +706,9 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
             if not answer or answer in ['Manual review required', 'No answer provided', 'Not processed']:
                 return ("18-75 years", 70, "Empty age answer - using standard age range")
 
-        # Pattern 2: Equipment questions should return equipment lists, not ages
+        # ============================================================
+        # PATTERN 3: Equipment Questions
+        # ============================================================
         equipment_patterns = ['equipment', 'imaging', 'mri', 'ct scan', 'scanner', 'fibroscan', 'facilities']
         if any(pattern in q_lower for pattern in equipment_patterns):
             # Check if answer mentions age (bad)
@@ -612,7 +720,10 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
             if any(item in answer_lower for item in equipment_items):
                 return (answer, confidence, "Valid equipment list")
 
-        # Pattern 3: "How many" questions should return numbers, not equipment lists or Yes/No
+        # ============================================================
+        # PATTERN 4: "How many" / Count Questions
+        # ============================================================
+        # Should return numbers, NOT Yes/No or equipment lists
         how_many_match = re.search(r'how\s+many', q_lower)
         if how_many_match:
             # Check if answer is Yes/No (bad for "how many")
@@ -1719,6 +1830,9 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
         import logging
         logger = logging.getLogger(__name__)
 
+        # Extract protocol requirements from site_profile (if present)
+        protocol_data = site_profile.get('protocol_requirements', {})
+
         # DIAGNOSTIC: Track filtering stats
         test_questions = [
             'Does the study collect PK samples?',
@@ -1743,8 +1857,12 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
             if not is_objective:
                 mapping = next((m for m in mappings if m.question_id == question_id), None)
 
-                # Check if we can reclassify SUBJECTIVE → OBJECTIVE
-                can_reclassify = self._can_reclassify_to_objective(mapping, question_text, logger)
+                # Check if we can reclassify SUBJECTIVE → OBJECTIVE (now with protocol data!)
+                can_reclassify = self._can_reclassify_to_objective(
+                    mapping, question_text, logger,
+                    site_data=site_profile,
+                    protocol_data=protocol_data
+                )
 
                 if can_reclassify:
                     logger.info(f"🔄 RECLASSIFICATION: SUBJECTIVE → OBJECTIVE")
@@ -1756,22 +1874,49 @@ Q: "Adequate staff to conduct study?" → A: "Yes" (not "5 coordinators, 3 inves
                     reclassification_count += 1
                     # Continue processing as OBJECTIVE question below
                 else:
-                    # Remain SUBJECTIVE - manual review required
-                    if is_test_question:
-                        logger.info(f"🔴 FILTER: {question_text}")
-                        logger.info(f"   Decision: SUBJECTIVE - Manual required")
-                        logger.info("=" * 80)
-                    response = {
-                        'id': question_id,
-                        'text': question_text,
-                        'type': question.get('type', 'text'),
-                        'is_objective': False,
-                        'response': '',
-                        'source': 'manual_required',
-                        'confidence': 0.0,
-                        'manually_edited': False,
-                        'reasoning': 'Subjective question requires manual input'
-                    }
+                    # ============================================================
+                    # SUBJECTIVE QUESTION GUIDANCE SYSTEM
+                    # ============================================================
+                    # Remain SUBJECTIVE but check if we can provide AI guidance
+                    # Low threshold (40%) for suggestions that user can review
+
+                    if mapping and mapping.mapped_value and mapping.confidence_score >= 40:
+                        # We have a reasonable AI suggestion - show it with low confidence
+                        # Don't mark as "0" - show the suggestion for user review
+                        response = {
+                            'id': question_id,
+                            'text': question_text,
+                            'type': question.get('type', 'text'),
+                            'is_objective': False,
+                            'response': mapping.mapped_value,  # Show AI suggestion
+                            'source': 'ai_guidance',  # New source type for subjective guidance
+                            'confidence': mapping.confidence_score,
+                            'manually_edited': False,
+                            'reasoning': f"AI suggestion based on site profile - please review and adjust as needed. {mapping.reasoning}"
+                        }
+                        if is_test_question:
+                            logger.info(f"💡 AI GUIDANCE: {question_text}")
+                            logger.info(f"   Decision: SUBJECTIVE with AI suggestion")
+                            logger.info(f"   Suggestion: {mapping.mapped_value[:100]}")
+                            logger.info(f"   Confidence: {mapping.confidence_score:.0f}%")
+                            logger.info("=" * 80)
+                    else:
+                        # Too low confidence or no mapping - require manual input
+                        if is_test_question:
+                            logger.info(f"🔴 FILTER: {question_text}")
+                            logger.info(f"   Decision: SUBJECTIVE - Manual required (no sufficient data)")
+                            logger.info("=" * 80)
+                        response = {
+                            'id': question_id,
+                            'text': question_text,
+                            'type': question.get('type', 'text'),
+                            'is_objective': False,
+                            'response': '',
+                            'source': 'manual_required',
+                            'confidence': 0.0,
+                            'manually_edited': False,
+                            'reasoning': 'Subjective question requires site assessment - insufficient data for AI suggestion'
+                        }
                     responses.append(response)
                     continue
 

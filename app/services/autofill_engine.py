@@ -130,8 +130,14 @@ class AutofillEngine:
             mapping_stats = self.question_mapper.get_mapping_statistics(mappings)
 
             # 6. Generate completion percentage and score
+            # CRITICAL: Only count as complete if has actual answer text (not empty, '0', or None)
             total_questions = len(questions_list)
-            autofilled_count = sum(1 for r in responses if r.get('source') != 'manual_required' and r.get('response'))
+            autofilled_count = sum(
+                1 for r in responses
+                if r.get('source') not in ['manual_required', None] and
+                r.get('response') and
+                str(r.get('response')).strip() not in ['', '0', 'None', 'null']
+            )
             completion_percentage = (autofilled_count / total_questions * 100) if total_questions > 0 else 0
 
             # Use comprehensive feasibility scoring
@@ -199,8 +205,14 @@ class AutofillEngine:
             )
 
             # Calculate completion statistics
+            # CRITICAL: Only count as complete if has actual answer text (not empty, '0', or None)
             total_questions = len(extracted_questions)
-            autofilled_count = sum(1 for r in responses if r.get('source') != 'manual_required' and r.get('response'))
+            autofilled_count = sum(
+                1 for r in responses
+                if r.get('source') not in ['manual_required', None] and
+                r.get('response') and
+                str(r.get('response')).strip() not in ['', '0', 'None', 'null']
+            )
             completion_percentage = (autofilled_count / total_questions * 100) if total_questions > 0 else 0
 
             # Calculate feasibility score using comprehensive scorer
@@ -241,8 +253,14 @@ class AutofillEngine:
             responses = self._generate_fallback_responses(fallback_questions, site_profile)
 
             # Calculate completion and scores
+            # CRITICAL: Only count as complete if has actual answer text (not empty, '0', or None)
             total_questions = len(fallback_questions)
-            autofilled_count = sum(1 for r in responses if r.get('response') and r.get('source') != 'manual_required')
+            autofilled_count = sum(
+                1 for r in responses
+                if r.get('source') not in ['manual_required', None] and
+                r.get('response') and
+                str(r.get('response')).strip() not in ['', '0', 'None', 'null']
+            )
             completion_percentage = (autofilled_count / total_questions * 100) if total_questions > 0 else 0
 
             return {
