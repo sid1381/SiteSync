@@ -657,9 +657,14 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
             (validated_answer, validated_confidence, validation_note)
         """
         import re
+        import logging
+        logger = logging.getLogger(__name__)
 
         q_lower = question_text.lower()
         answer_lower = answer.lower() if isinstance(answer, str) else str(answer).lower()
+
+        # Log semantic validation for debugging
+        logger.debug(f"🔍 Semantic validation for: {question_text[:50]} → Answer: {str(answer)[:50]}")
 
         # ============================================================
         # PATTERN 1: Feasibility/Manageability Questions
@@ -668,10 +673,20 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
         # Should return: Yes/No + reasoning based on data, NOT just raw values
         feasibility_keywords = ['manageable', 'feasible', 'realistic', 'adequate', 'sufficient', 'enough', 'workload']
         if any(keyword in q_lower for keyword in feasibility_keywords):
+            logger.info(f"🎯 FEASIBILITY PATTERN DETECTED: {question_text[:80]}")
+            logger.info(f"   Keywords matched: {[k for k in feasibility_keywords if k in q_lower]}")
+            logger.info(f"   Original answer: '{answer}'")
+
             # CRITICAL: Check for semantic mismatches - age data for workload/manageability questions
             age_mismatch_indicators = ['years', 'age', '18-75', '18-65', 'age range', 'yrs']
-            if any(indicator in answer_lower for indicator in age_mismatch_indicators):
+            matched_indicators = [ind for ind in age_mismatch_indicators if ind in answer_lower]
+
+            if matched_indicators:
                 # Workload/manageability question got age data - WRONG!
+                logger.warning(f"❌ SEMANTIC MISMATCH DETECTED!")
+                logger.warning(f"   Age indicators in answer: {matched_indicators}")
+                logger.warning(f"   CORRECTING: '{answer}' → 'Yes - based on site resources and staffing'")
+                logger.warning("=" * 80)
                 return ("Yes - based on site resources and staffing", 75, "SEMANTIC MISMATCH: Workload question answered with age data - corrected")
 
             # Check if answer is just raw data without yes/no assessment
@@ -686,7 +701,14 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
 
             # Valid if starts with Yes/No/Partially
             if any(answer_lower.startswith(start) for start in ['yes', 'no', 'partially', 'unable']):
+                logger.info(f"✅ VALIDATION PASSED: Answer format is valid (starts with Yes/No/Partially)")
+                logger.info("=" * 80)
                 return (answer, confidence, "Valid feasibility assessment")
+
+            # If we reach here, format is questionable but not clearly wrong
+            logger.info(f"⚠️  VALIDATION WARNING: Feasibility answer doesn't start with Yes/No but not clearly wrong")
+            logger.info(f"   Answer: '{answer}'")
+            logger.info("=" * 80)
 
         # ============================================================
         # PATTERN 2: Age Questions
