@@ -578,6 +578,12 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
 
                     # ========== POST-PROCESSING VALIDATION ==========
                     # Catch semantic mismatches (e.g., equipment for age questions)
+                    logger.info("=" * 80)
+                    logger.info(f"⚙️  CALLING VALIDATION for question: {q_text[:80]}")
+                    logger.info(f"   Answer before validation: '{answer}'")
+                    logger.info(f"   Confidence before validation: {confidence}")
+                    logger.info("=" * 80)
+
                     validated_answer, validated_confidence, validation_note = self._validate_answer_semantics(
                         question_text=q_text,
                         answer=answer,
@@ -660,11 +666,18 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
         import logging
         logger = logging.getLogger(__name__)
 
+        # CRITICAL: Log EVERY validation attempt at INFO level (not debug)
+        logger.info("=" * 80)
+        logger.info(f"🔍 VALIDATING QUESTION")
+        logger.info(f"   Question (full): '{question_text}'")
+        logger.info(f"   Answer (full): '{answer}'")
+        logger.info(f"   Confidence: {confidence}")
+
         q_lower = question_text.lower()
         answer_lower = answer.lower() if isinstance(answer, str) else str(answer).lower()
 
-        # Log semantic validation for debugging
-        logger.debug(f"🔍 Semantic validation for: {question_text[:50]} → Answer: {str(answer)[:50]}")
+        logger.info(f"   Question (lowercase): '{q_lower}'")
+        logger.info(f"   Answer (lowercase): '{answer_lower}'")
 
         # ============================================================
         # PATTERN 1: Feasibility/Manageability Questions
@@ -672,14 +685,33 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
         # Questions asking if something is manageable, feasible, realistic, adequate
         # Should return: Yes/No + reasoning based on data, NOT just raw values
         feasibility_keywords = ['manageable', 'feasible', 'realistic', 'adequate', 'sufficient', 'enough', 'workload']
+
+        # CRITICAL: Check each keyword explicitly and log
+        logger.info(f"🔎 CHECKING FEASIBILITY KEYWORDS:")
+        for keyword in feasibility_keywords:
+            is_present = keyword in q_lower
+            logger.info(f"   '{keyword}' in question? {is_present}")
+
+        matched_keywords = [k for k in feasibility_keywords if k in q_lower]
+        logger.info(f"   Total matched: {len(matched_keywords)}")
+
         if any(keyword in q_lower for keyword in feasibility_keywords):
+            logger.info("=" * 80)
             logger.info(f"🎯 FEASIBILITY PATTERN DETECTED: {question_text[:80]}")
-            logger.info(f"   Keywords matched: {[k for k in feasibility_keywords if k in q_lower]}")
+            logger.info(f"   Keywords matched: {matched_keywords}")
             logger.info(f"   Original answer: '{answer}'")
 
             # CRITICAL: Check for semantic mismatches - age data for workload/manageability questions
             age_mismatch_indicators = ['years', 'age', '18-75', '18-65', 'age range', 'yrs']
+
+            logger.info(f"🔎 CHECKING AGE MISMATCH INDICATORS:")
+            for indicator in age_mismatch_indicators:
+                is_present = indicator in answer_lower
+                logger.info(f"   '{indicator}' in answer? {is_present}")
+
             matched_indicators = [ind for ind in age_mismatch_indicators if ind in answer_lower]
+            logger.info(f"   Total age indicators matched: {len(matched_indicators)}")
+            logger.info(f"   Matched indicators: {matched_indicators}")
 
             if matched_indicators:
                 # Workload/manageability question got age data - WRONG!
@@ -803,6 +835,9 @@ You are powered by GPT-4o for advanced reasoning and accurate gap analysis.""",
                     return ("Manual review required", 30, "Binary choice question answered with Yes/No - needs specific option")
 
         # Default: Accept answer as-is
+        logger.info(f"✅ DEFAULT: No pattern matched, accepting answer as-is")
+        logger.info(f"   Returning: ({answer}, {confidence}, 'Passed validation')")
+        logger.info("=" * 80)
         return (answer, confidence, "Passed validation")
 
     def _validate_protocol_data(self, protocol: Dict) -> Dict[str, Any]:
