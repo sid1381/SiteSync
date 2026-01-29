@@ -332,68 +332,177 @@ async def submit_survey(
         "message": f"Survey submitted to {submit_data.sponsor_email}"
     }
 
-@router.get("/{survey_id}/download/{format}")
-async def download_export(
-    survey_id: int,
-    format: str,
-    db: Session = Depends(get_session)
-):
-    """Download PDF or Excel export"""
+@router.get("/{survey_id}/download/pdf")
+async def download_pdf(survey_id: int, db: Session = Depends(get_session)):
+    """Download completed survey as PDF"""
+    print(f"=== PDF DOWNLOAD CALLED for survey_id: {survey_id} ===")
+    from app.services.export_service import ExportService
+    from fastapi.responses import Response
+
     survey = db.get(models.Survey, survey_id)
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
-    # Get all responses
-    all_responses = db.query(models.SurveyResponse).filter(
-        models.SurveyResponse.survey_id == survey_id
-    ).all()
+    # Get site profile for context
+    site = db.get(models.Site, survey.site_id) if survey.site_id else None
+    site_profile = {
+        "population_capabilities": site.population_capabilities if site else {},
+        "staff_and_experience": site.staff_and_experience if site else {},
+        "facilities_and_equipment": site.facilities_and_equipment if site else {},
+        "operational_capabilities": site.operational_capabilities if site else {},
+        "historical_performance": site.historical_performance if site else {},
+        "compliance_and_training": site.compliance_and_training if site else {}
+    } if site else {}
 
-    responses_list = [
-        {
-            "id": r.question_id,
-            "text": r.question_text,
-            "type": r.question_type,
-            "is_objective": r.is_objective,
-            "response": r.response_value,
-            "source": r.response_source,
-            "confidence": r.confidence_score
-        }
-        for r in all_responses
-    ]
+    # Build responses from JSONB fields (not the empty SurveyResponse table)
+    all_responses = []
 
-    # Prepare survey data
-    site = db.get(models.Site, survey.site_id)
+    # Get autofilled responses (objective questions)
+    if survey.autofilled_responses:
+        for resp in survey.autofilled_responses:
+            all_responses.append({
+                "question_number": resp.get("id", ""),  # Fixed: 'id' not 'question_number'
+                "question_text": resp.get("text", ""),  # Fixed: 'text' not 'question_text'
+                "response": resp.get("response", ""),
+                "confidence": resp.get("confidence", 0),
+                "is_objective": resp.get("is_objective", True),
+                "category": resp.get("category", "General")
+            })
+
+    # Get extracted questions that might have manual responses
+    if survey.survey_questions:
+        # Create a lookup of already-added questions
+        added_questions = {r["question_text"] for r in all_responses}
+
+        for q in survey.survey_questions:
+            q_text = q.get("text", "")  # Fixed: 'text' not 'question_text'
+            if q_text and q_text not in added_questions:
+                all_responses.append({
+                    "question_number": q.get("id", ""),  # Fixed: 'id' not 'question_number'
+                    "question_text": q_text,
+                    "response": q.get("response", "Requires manual review"),
+                    "confidence": q.get("confidence", 0),
+                    "is_objective": q.get("is_objective", False),
+                    "category": q.get("category", "General")
+                })
+
+    # Sort by question number if available
+    all_responses.sort(key=lambda x: (
+        int(x["question_number"]) if x["question_number"] and str(x["question_number"]).isdigit() else 999
+    ))
+
+    # Build survey data for export
     survey_data = {
-        "sponsor_name": survey.sponsor_name,
-        "study_name": survey.study_name,
-        "nct_number": survey.nct_number,
-        "site_name": site.name,
-        "feasibility_score": survey.feasibility_score,
-        "completion_percentage": survey.completion_percentage,
-        "score_breakdown": survey.score_breakdown
+        "id": survey.id,
+        "sponsor_name": survey.sponsor_name or "Unknown Sponsor",
+        "study_name": survey.study_name or "Unknown Study",
+        "study_type": survey.study_type or "Unknown Type",
+        "nct_number": survey.nct_number or "",
+        "due_date": str(survey.due_date) if survey.due_date else "",
+        "feasibility_score": survey.feasibility_score or 0,
+        "completion_percentage": survey.completion_percentage or 0,
+        "submitted_at": str(survey.submitted_at) if survey.submitted_at else "",
+        "submitted_to_email": survey.submitted_to_email or "",
+        "score_breakdown": survey.score_breakdown or {},
+        "site_name": site.name if site else "Unknown Site"
     }
 
-    from app.services.export_service import ExportService
-    exporter = ExportService()
+    # Generate PDF
+    export_service = ExportService()
+    pdf_bytes = export_service.generate_pdf_export(survey_data, all_responses, site_profile)
 
-    if format == "pdf":
-        content = exporter.generate_pdf_export(survey_data, responses_list)
-        media_type = "application/pdf"
-        filename = f"Feasibility_{survey.study_name.replace(' ', '_')}.pdf"
-    elif format == "excel":
-        content = exporter.generate_excel_export(survey_data, responses_list)
-        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        filename = f"Feasibility_{survey.study_name.replace(' ', '_')}.xlsx"
-    else:
-        raise HTTPException(status_code=400, detail="Invalid format")
+    filename = f"SiteSync_Survey_{survey.sponsor_name}_{survey.study_name}_{survey.id}.pdf".replace(" ", "_")
 
-    from fastapi.responses import Response
     return Response(
-        content=content,
-        media_type=media_type,
-        headers={
-            "Content-Disposition": f"attachment; filename={filename}"
-        }
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/{survey_id}/download/excel")
+async def download_excel(survey_id: int, db: Session = Depends(get_session)):
+    """Download completed survey as Excel"""
+    from app.services.export_service import ExportService
+    from fastapi.responses import Response
+
+    survey = db.get(models.Survey, survey_id)
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    # Get site profile for context
+    site = db.get(models.Site, survey.site_id) if survey.site_id else None
+    site_profile = {
+        "population_capabilities": site.population_capabilities if site else {},
+        "staff_and_experience": site.staff_and_experience if site else {},
+        "facilities_and_equipment": site.facilities_and_equipment if site else {},
+        "operational_capabilities": site.operational_capabilities if site else {},
+        "historical_performance": site.historical_performance if site else {},
+        "compliance_and_training": site.compliance_and_training if site else {}
+    } if site else {}
+
+    # Build responses from JSONB fields (same logic as PDF)
+    all_responses = []
+
+    if survey.autofilled_responses:
+        for resp in survey.autofilled_responses:
+            all_responses.append({
+                "question_number": resp.get("id", ""),  # Fixed: 'id' not 'question_number'
+                "question_text": resp.get("text", ""),  # Fixed: 'text' not 'question_text'
+                "response": resp.get("response", ""),
+                "confidence": resp.get("confidence", 0),
+                "is_objective": resp.get("is_objective", True),
+                "category": resp.get("category", "General")
+            })
+
+    if survey.survey_questions:
+        added_questions = {r["question_text"] for r in all_responses}
+
+        for q in survey.survey_questions:
+            q_text = q.get("text", "")  # Fixed: 'text' not 'question_text'
+            if q_text and q_text not in added_questions:
+                all_responses.append({
+                    "question_number": q.get("id", ""),  # Fixed: 'id' not 'question_number'
+                    "question_text": q_text,
+                    "response": q.get("response", "Requires manual review"),
+                    "confidence": q.get("confidence", 0),
+                    "is_objective": q.get("is_objective", False),
+                    "category": q.get("category", "General")
+                })
+
+    all_responses.sort(key=lambda x: (
+        int(x["question_number"]) if x["question_number"] and str(x["question_number"]).isdigit() else 999
+    ))
+
+    survey_data = {
+        "id": survey.id,
+        "sponsor_name": survey.sponsor_name or "Unknown Sponsor",
+        "study_name": survey.study_name or "Unknown Study",
+        "study_type": survey.study_type or "Unknown Type",
+        "nct_number": survey.nct_number or "",
+        "due_date": str(survey.due_date) if survey.due_date else "",
+        "feasibility_score": survey.feasibility_score or 0,
+        "completion_percentage": survey.completion_percentage or 0,
+        "submitted_at": str(survey.submitted_at) if survey.submitted_at else "",
+        "submitted_to_email": survey.submitted_to_email or "",
+        "score_breakdown": survey.score_breakdown or {},
+        "site_name": site.name if site else "Unknown Site"
+    }
+
+    # Debug logging
+    print(f"Excel export: Survey {survey_id} has {len(all_responses)} responses")
+    if all_responses:
+        print(f"First response sample: {all_responses[0]}")
+
+    export_service = ExportService()
+    excel_bytes = export_service.generate_excel_export(survey_data, all_responses, site_profile)
+
+    filename = f"SiteSync_Survey_{survey.sponsor_name}_{survey.study_name}_{survey.id}.xlsx".replace(" ", "_")
+
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 @router.get("/{survey_id}")

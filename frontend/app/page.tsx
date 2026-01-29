@@ -10,8 +10,14 @@ import {
   Plus, Calendar, Mail, Download, FileSpreadsheet,
   CheckSquare, Square, Edit3, Save, X, Shield, Award, Zap
 } from 'lucide-react';
+import emailjs from '@emailjs/browser';
 
 const API_URL = 'http://localhost:8000';
+
+// EmailJS configuration
+const EMAILJS_SERVICE_ID = 'service_jr2iv58';
+const EMAILJS_TEMPLATE_ID = 'template_b0anxpu';
+const EMAILJS_PUBLIC_KEY = 'gexRjFVCz8zFgSra7';
 
 // API client with all new survey endpoints
 const api = {
@@ -296,6 +302,25 @@ export default function SiteSync() {
         subjectiveResponses
       );
 
+      // Send the actual email via EmailJS
+      const emailParams = {
+        email: sponsorEmail,
+        sponsor_name: selectedSurvey.sponsor_name || 'Sponsor',
+        study_name: selectedSurvey.study_name || 'Study',
+        site_name: 'City Hospital Clinical Research Unit',
+        feasibility_score: selectedSurvey.feasibility_score || 'N/A',
+        completion_rate: selectedSurvey.completion_percentage?.toFixed(1) || 'N/A',
+      };
+
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        emailParams,
+        EMAILJS_PUBLIC_KEY
+      );
+
+      console.log('Email sent successfully to:', sponsorEmail);
+
       setCurrentView('submitted');
       setSelectedSurvey({
         ...selectedSurvey,
@@ -304,7 +329,8 @@ export default function SiteSync() {
         excel_download: result.excel_download
       });
     } catch (err) {
-      setError('Failed to submit survey');
+      console.error('Submission error:', err);
+      setError('Failed to submit survey. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -395,7 +421,7 @@ export default function SiteSync() {
               SiteSync
             </h1>
             {selectedSite && (
-              <div className="flex items-center text-gray-600">
+              <div className="flex items-center text-black">
                 <Building2 className="w-4 h-4 mr-2" />
                 <span>{selectedSite.name}</span>
               </div>
@@ -408,7 +434,7 @@ export default function SiteSync() {
                 className={`px-3 py-1 rounded text-sm font-medium ${
                   currentView === 'dashboard'
                     ? 'text-green-600 bg-green-50'
-                    : 'text-gray-600 hover:text-gray-900'
+                    : 'text-black hover:text-black'
                 }`}
               >
                 Dashboard
@@ -418,7 +444,7 @@ export default function SiteSync() {
                 className={`px-3 py-1 rounded text-sm font-medium ${
                   currentView === 'inbox'
                     ? 'text-green-600 bg-green-50'
-                    : 'text-gray-600 hover:text-gray-900'
+                    : 'text-black hover:text-black'
                 }`}
               >
                 Inbox
@@ -428,13 +454,13 @@ export default function SiteSync() {
                 className={`px-3 py-1 rounded text-sm font-medium ${
                   currentView === 'profile'
                     ? 'text-green-600 bg-green-50'
-                    : 'text-gray-600 hover:text-gray-900'
+                    : 'text-black hover:text-black'
                 }`}
               >
                 Site Profile
               </button>
             </nav>
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-black">
               Transform 60-minute surveys into 15-minute workflows
             </span>
           </div>
@@ -510,7 +536,7 @@ function InboxView({ surveys, onSelectSurvey, onCreateNew }: any) {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">Survey Inbox</h2>
+        <h2 className="text-2xl font-bold text-black">Survey Inbox</h2>
         <button
           onClick={onCreateNew}
           className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center"
@@ -537,7 +563,7 @@ function InboxView({ surveys, onSelectSurvey, onCreateNew }: any) {
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
                     <h3 className={`text-lg font-semibold ${
-                      stateInfo.clickable ? 'text-gray-900' : 'text-gray-600'
+                      stateInfo.clickable ? 'text-black' : 'text-black'
                     }`}>
                       {survey.study_name}
                     </h3>
@@ -546,16 +572,16 @@ function InboxView({ surveys, onSelectSurvey, onCreateNew }: any) {
                     </span>
                   </div>
 
-                  <p className={`${stateInfo.clickable ? 'text-gray-600' : 'text-gray-500'}`}>
+                  <p className={`${stateInfo.clickable ? 'text-black' : 'text-black'}`}>
                     {survey.sponsor_name}
                   </p>
 
-                  <p className={`text-sm mt-1 ${stateInfo.clickable ? 'text-blue-600' : 'text-gray-400'}`}>
+                  <p className={`text-sm mt-1 ${stateInfo.clickable ? 'text-blue-600' : 'text-black'}`}>
                     {stateInfo.description}
                   </p>
 
                   <div className={`mt-3 flex items-center space-x-4 text-sm ${
-                    stateInfo.clickable ? 'text-gray-500' : 'text-gray-400'
+                    stateInfo.clickable ? 'text-black' : 'text-black'
                   }`}>
                     <span>{survey.study_type}</span>
                     {survey.nct_number && <span>NCT: {survey.nct_number}</span>}
@@ -579,7 +605,7 @@ function InboxView({ surveys, onSelectSurvey, onCreateNew }: any) {
 
                   {survey.completion_percentage > 0 && (
                     <span className={`text-sm ${
-                      stateInfo.clickable ? 'text-gray-600' : 'text-gray-400'
+                      stateInfo.clickable ? 'text-black' : 'text-black'
                     }`}>
                       {survey.completion_percentage.toFixed(0)}% complete
                     </span>
@@ -593,7 +619,7 @@ function InboxView({ surveys, onSelectSurvey, onCreateNew }: any) {
                   )}
 
                   {!stateInfo.clickable && (
-                    <div className="flex items-center text-sm text-gray-400 mt-2">
+                    <div className="flex items-center text-sm text-black mt-2">
                       <CheckCircle className="w-4 h-4 mr-1" />
                       <span>Complete</span>
                     </div>
@@ -608,7 +634,7 @@ function InboxView({ surveys, onSelectSurvey, onCreateNew }: any) {
       {surveys.length === 0 && (
         <div className="bg-white p-12 rounded-lg text-center">
           <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No surveys in inbox</p>
+          <p className="text-black">No surveys in inbox</p>
           <button
             onClick={onCreateNew}
             className="mt-4 text-green-600 hover:text-green-700"
@@ -638,42 +664,42 @@ function CreateSurveyView({ onSubmit, onCancel }: any) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">Create New Survey Entry</h2>
+      <h2 className="text-2xl font-bold text-black mb-6">Create New Survey Entry</h2>
 
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow">
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-black mb-1">
               Sponsor Name
             </label>
             <input
               type="text"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
               value={formData.sponsor_name}
               onChange={(e) => setFormData({...formData, sponsor_name: e.target.value})}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-black mb-1">
               Study Name
             </label>
             <input
               type="text"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
               value={formData.study_name}
               onChange={(e) => setFormData({...formData, study_name: e.target.value})}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-black mb-1">
               Study Type
             </label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
               value={formData.study_type}
               onChange={(e) => setFormData({...formData, study_type: e.target.value})}
             >
@@ -687,25 +713,26 @@ function CreateSurveyView({ onSubmit, onCancel }: any) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-black mb-1">
               NCT Number (Optional)
             </label>
             <input
               type="text"
               placeholder="NCT12345678"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
               value={formData.nct_number}
               onChange={(e) => setFormData({...formData, nct_number: e.target.value})}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-black mb-1">
               Due Date
             </label>
             <input
               type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="mm/dd/yyyy"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
               value={formData.due_date}
               onChange={(e) => setFormData({...formData, due_date: e.target.value})}
             />
@@ -750,8 +777,8 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold">{survey.study_name}</h2>
-        <p className="text-gray-600">{survey.sponsor_name}</p>
+        <h2 className="text-2xl font-bold text-black">{survey.study_name}</h2>
+        <p className="text-black">{survey.sponsor_name}</p>
       </div>
 
       {processingStage && (
@@ -766,7 +793,7 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
       <div className="grid md:grid-cols-2 gap-6">
         {/* Protocol Upload */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <h3 className="text-lg font-semibold text-black mb-4 flex items-center">
             <FileText className="w-5 h-5 mr-2 text-green-600" />
             Protocol Document
           </h3>
@@ -780,7 +807,7 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
                   <div className="text-3xl font-bold text-green-600">
                     {survey.feasibility_score}/100
                   </div>
-                  <p className="text-sm text-gray-600">Feasibility Score</p>
+                  <p className="text-sm text-black">Feasibility Score</p>
                 </div>
               )}
             </div>
@@ -795,7 +822,7 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
             >
               <Upload className="w-12 h-12 mx-auto text-gray-500 mb-3" />
               <p className="text-gray-800 font-medium">Drop protocol PDF here</p>
-              <p className="text-sm text-gray-600 mt-1">or click to browse</p>
+              <p className="text-sm text-black mt-1">or click to browse</p>
               {!survey.survey_uploaded && (
                 <p className="text-xs text-yellow-700 font-medium mt-2">Upload survey document first</p>
               )}
@@ -825,7 +852,7 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
 
         {/* Survey Upload */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4 flex items-center">
+          <h3 className="text-lg font-semibold text-black mb-4 flex items-center">
             <ClipboardCheck className="w-5 h-5 mr-2 text-blue-600" />
             Survey Document
           </h3>
@@ -835,16 +862,16 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
               <CheckCircle className="w-16 h-16 mx-auto text-green-500 mb-4" />
               <p className="text-green-600 font-medium">Survey Uploaded</p>
               <div className="mt-4 space-y-2">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-black">
                   {survey.questions_extracted} questions extracted
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-black">
                   {survey.questions_autofilled} auto-filled
                 </p>
                 <div className="text-2xl font-bold text-blue-600">
                   {survey.completion_percentage?.toFixed(0)}%
                 </div>
-                <p className="text-sm text-gray-600">Auto-completion</p>
+                <p className="text-sm text-black">Auto-completion</p>
               </div>
             </div>
           ) : (
@@ -856,7 +883,7 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
             >
               <Upload className="w-12 h-12 mx-auto text-gray-500 mb-3" />
               <p className="text-gray-800 font-medium">Drop survey PDF or Excel</p>
-              <p className="text-sm text-gray-600 mt-1">or click to browse</p>
+              <p className="text-sm text-black mt-1">or click to browse</p>
               <p className="text-xs text-blue-600 font-medium mt-2">Upload survey first to extract questions</p>
               <input
                 id="survey-input"
@@ -910,12 +937,12 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
     <div>
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Review Responses</h2>
-          <p className="text-gray-600">{survey.study_name}</p>
+          <h2 className="text-2xl font-bold text-black">Review Responses</h2>
+          <p className="text-black">{survey.study_name}</p>
         </div>
         <button
           onClick={onBack}
-          className="flex items-center text-gray-600 hover:text-gray-900"
+          className="flex items-center text-black hover:text-black"
         >
           <ArrowLeft className="w-4 h-4 mr-1" />
           Back
@@ -967,7 +994,7 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
               className={`px-6 py-3 font-medium ${
                 activeTab === 'objective'
                   ? 'text-green-600 border-b-2 border-green-600'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-black hover:text-black'
               }`}
             >
               <CheckSquare className="inline w-4 h-4 mr-2" />
@@ -978,7 +1005,7 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
               className={`px-6 py-3 font-medium ${
                 activeTab === 'subjective'
                   ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-black hover:text-black'
               }`}
             >
               <Edit3 className="inline w-4 h-4 mr-2" />
@@ -993,11 +1020,11 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
             {activeResponses.map((response: any) => (
               <div key={response.id} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
                 <div className="flex justify-between items-start mb-3">
-                  <p className="text-base font-semibold text-gray-900 flex-1 leading-relaxed">
+                  <p className="text-base font-semibold text-black flex-1 leading-relaxed">
                     {response.text}
                   </p>
                   {response.confidence && (
-                    <span className="ml-3 text-xs font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                    <span className="ml-3 text-xs font-medium text-black bg-gray-100 px-2 py-1 rounded">
                       {response.confidence.toFixed(0)}% confidence
                     </span>
                   )}
@@ -1005,8 +1032,8 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
 
                 {activeTab === 'objective' ? (
                   <div className="bg-green-50 border border-green-100 px-4 py-3 rounded-md">
-                    <p className="text-sm text-gray-900 font-medium">{response.response || 'No data available'}</p>
-                    <p className="text-xs text-gray-600 mt-2">
+                    <p className="text-sm text-black font-medium">{response.response || 'No data available'}</p>
+                    <p className="text-xs text-black mt-2">
                       <span className="font-medium">Source:</span> {response.source}
                       {response.confidence && response.confidence > 0 && (
                         <span className="ml-2">• {Math.round(response.confidence)}% confidence</span>
@@ -1015,7 +1042,7 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
                   </div>
                 ) : (
                   <textarea
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-black"
                     rows={3}
                     placeholder="Enter your response..."
                     value={editedResponses[response.id] || response.response || ''}
@@ -1057,13 +1084,13 @@ function SubmitView({ survey, onSubmit, onBack }: any) {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">Submit Survey</h2>
+      <h2 className="text-2xl font-bold text-black mb-6">Submit Survey</h2>
 
       <div className="bg-white p-6 rounded-lg shadow">
         <form onSubmit={handleSubmit}>
           <div className="mb-6">
-            <h3 className="font-semibold mb-3">Survey Summary</h3>
-            <div className="bg-gray-50 p-4 rounded space-y-2 text-sm">
+            <h3 className="font-semibold text-black mb-3">Survey Summary</h3>
+            <div className="bg-gray-50 p-4 rounded space-y-2 text-sm text-black">
               <p><strong>Study:</strong> {survey.study_name}</p>
               <p><strong>Sponsor:</strong> {survey.sponsor_name}</p>
               <p><strong>Feasibility Score:</strong> {survey.feasibility_score}/100</p>
@@ -1072,25 +1099,25 @@ function SubmitView({ survey, onSubmit, onBack }: any) {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-black mb-1">
               Sponsor Email Address
             </label>
             <input
               type="email"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 text-black"
               placeholder="sponsor@example.com"
               value={sponsorEmail}
               onChange={(e) => setSponsorEmail(e.target.value)}
             />
-            <p className="text-xs text-gray-600 mt-1">
+            <p className="text-xs text-black mt-1">
               The completed survey will be sent to this email with PDF and Excel attachments
             </p>
           </div>
 
           <div className="mb-6">
-            <h4 className="font-semibold text-gray-900 mb-3">What will be sent:</h4>
-            <ul className="space-y-2 text-sm text-gray-800">
+            <h4 className="font-semibold text-black mb-3">What will be sent:</h4>
+            <ul className="space-y-2 text-sm text-black">
               <li className="flex items-center">
                 <FileText className="w-4 h-4 mr-2 text-red-600" />
                 PDF Report with all responses
@@ -1110,7 +1137,7 @@ function SubmitView({ survey, onSubmit, onBack }: any) {
             <button
               type="button"
               onClick={onBack}
-              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 text-black"
             >
               Back to Review
             </button>
@@ -1145,14 +1172,14 @@ function SubmittedView({ survey, onReturnToInbox }: any) {
       <div className="bg-white p-12 rounded-lg shadow">
         <CheckCircle className="w-20 h-20 mx-auto text-green-500 mb-6" />
 
-        <h2 className="text-2xl font-bold mb-4">Survey Submitted Successfully!</h2>
+        <h2 className="text-2xl font-bold text-black mb-4">Survey Submitted Successfully!</h2>
 
-        <p className="text-gray-600 mb-6">
+        <p className="text-black mb-6">
           The completed feasibility assessment for <strong>{survey.study_name}</strong> has been sent to the sponsor.
         </p>
 
         <div className="bg-gray-50 p-6 rounded mb-6">
-          <h3 className="font-semibold mb-4">Download Copies</h3>
+          <h3 className="font-semibold text-black mb-4">Download Copies</h3>
           <div className="flex justify-center space-x-4">
             <a
               href={`${API_URL}${survey.pdf_download}`}
@@ -1172,11 +1199,11 @@ function SubmittedView({ survey, onReturnToInbox }: any) {
         </div>
 
         <div className="space-y-3 mb-8">
-          <div className="flex items-center justify-center text-sm text-gray-600">
+          <div className="flex items-center justify-center text-sm text-black">
             <Clock className="w-4 h-4 mr-2" />
             Submitted at {new Date().toLocaleString()}
           </div>
-          <div className="flex items-center justify-center text-sm text-gray-600">
+          <div className="flex items-center justify-center text-sm text-black">
             <Mail className="w-4 h-4 mr-2" />
             Sent to sponsor via email
           </div>
@@ -1302,10 +1329,10 @@ function DashboardView({ siteId, onNavigateToInbox }: DashboardViewProps) {
 
       {/* Efficiency Comparison */}
       <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-xl font-bold mb-4">Efficiency Gains</h2>
+        <h2 className="text-xl font-bold text-black mb-4">Efficiency Gains</h2>
         <div className="grid md:grid-cols-2 gap-8">
           <div>
-            <h3 className="font-semibold text-gray-700 mb-3">Traditional Process</h3>
+            <h3 className="font-semibold text-black mb-3">Traditional Process</h3>
             <div className="space-y-3">
               <ProcessStep
                 time="15 min"
@@ -1329,7 +1356,7 @@ function DashboardView({ siteId, onNavigateToInbox }: DashboardViewProps) {
           </div>
 
           <div>
-            <h3 className="font-semibold text-gray-700 mb-3">SiteSync Process</h3>
+            <h3 className="font-semibold text-black mb-3">SiteSync Process</h3>
             <div className="space-y-3">
               <ProcessStep
                 time="1 min"
@@ -1366,7 +1393,7 @@ function DashboardView({ siteId, onNavigateToInbox }: DashboardViewProps) {
       {/* Recent Activity */}
       <div className="bg-white p-6 rounded-lg shadow">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Recent Surveys</h2>
+          <h2 className="text-xl font-bold text-black">Recent Surveys</h2>
           <button
             onClick={onNavigateToInbox}
             className="text-green-600 hover:text-green-700 text-sm font-medium"
@@ -1379,8 +1406,8 @@ function DashboardView({ siteId, onNavigateToInbox }: DashboardViewProps) {
           {stats?.recentSurveys?.map((survey: any) => (
             <div key={survey.id} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded">
               <div className="flex-1">
-                <p className="font-medium">{survey.study_name}</p>
-                <p className="text-sm text-gray-600">{survey.sponsor_name}</p>
+                <p className="font-medium text-black">{survey.study_name}</p>
+                <p className="text-sm text-black">{survey.sponsor_name}</p>
               </div>
               <div className="flex items-center space-x-4">
                 {survey.feasibility_score && (
@@ -1394,7 +1421,7 @@ function DashboardView({ siteId, onNavigateToInbox }: DashboardViewProps) {
           ))}
 
           {(!stats?.recentSurveys || stats.recentSurveys.length === 0) && (
-            <p className="text-center text-gray-500 py-8">No surveys yet</p>
+            <p className="text-center text-black py-8">No surveys yet</p>
           )}
         </div>
       </div>
@@ -1432,7 +1459,7 @@ function MetricCard({ icon, value, label, color, bgColor }: any) {
         {icon}
       </div>
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      <p className="text-sm text-gray-600 mt-1">{label}</p>
+      <p className="text-sm text-black mt-1">{label}</p>
     </div>
   );
 }
@@ -1444,10 +1471,10 @@ function ProcessStep({ time, task, icon, automated = false }: any) {
         {icon}
       </div>
       <div className="flex-1">
-        <p className="text-sm font-medium">{task}</p>
+        <p className="text-sm font-medium text-black">{task}</p>
         {automated && <span className="text-xs text-green-600">Automated</span>}
       </div>
-      <span className="text-sm text-gray-500">{time}</span>
+      <span className="text-sm text-black">{time}</span>
     </div>
   );
 }
@@ -1474,7 +1501,7 @@ function ValueProp({ icon, title, description }: any) {
         {icon}
       </div>
       <h3 className="font-semibold mb-1">{title}</h3>
-      <p className="text-sm text-gray-600">{description}</p>
+      <p className="text-sm text-black">{description}</p>
     </div>
   );
 }
@@ -1485,7 +1512,7 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        <span className="ml-2 text-gray-600">Loading site profile...</span>
+        <span className="ml-2 text-black">Loading site profile...</span>
       </div>
     );
   }
@@ -1497,18 +1524,18 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
         <div className="flex items-center space-x-4">
           <button
             onClick={onBack}
-            className="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+            className="p-2 text-black hover:text-black rounded-lg hover:bg-gray-100"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{profile.name}</h1>
-            <p className="text-gray-600">Comprehensive Clinical Research Center Profile</p>
+            <h1 className="text-3xl font-bold text-black">{profile.name}</h1>
+            <p className="text-black">Comprehensive Clinical Research Center Profile</p>
           </div>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-green-600">{profile.metadata?.profile_completeness || 100}%</div>
-          <p className="text-sm text-gray-600">Profile Complete</p>
+          <p className="text-sm text-black">Profile Complete</p>
         </div>
       </div>
 
@@ -1547,7 +1574,7 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             </div>
           </div>
           <div className="mt-4 p-3 bg-gray-50 rounded">
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-black">
               <strong>Special Populations:</strong> {profile.population_capabilities?.special_populations || 'Diverse urban population; ~30% elderly, 20% pediatric patients'}
             </p>
           </div>
