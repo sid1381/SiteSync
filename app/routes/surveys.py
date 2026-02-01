@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.db import get_session
 from app import models
 from app.schemas.survey import SurveyCreate
+from app.services.feasibility_scorer import calculate_feasibility_score
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +114,6 @@ async def upload_protocol(
     # STEP 1: Extract real protocol requirements using new extractor
     try:
         from app.services.protocol_requirement_extractor import ProtocolRequirementExtractor
-        from app.services.feasibility_scorer import FeasibilityScorer
-        from app.routes.site_profile import get_site_profile
 
         print("🔍 Processing protocol with real requirement extraction...")
 
@@ -143,24 +142,43 @@ async def upload_protocol(
         print(f"   Primary indication: {protocol_requirements.get('patient_population', {}).get('primary_indication')}")
 
         # STEP 2: Score feasibility (Protocol Requirements vs Site Capabilities)
-        site_profile_response = await get_site_profile(survey.site_id, db)
+        # Get site info
+        site = db.get(models.Site, survey.site_id) if survey.site_id else None
 
-        scorer = FeasibilityScorer()
-        feasibility_result = scorer.score_feasibility(
-            protocol_requirements={"requirements": protocol_requirements},
-            site_profile=site_profile_response
-        )
-
-        # Update survey with REAL feasibility scoring
-        survey.feasibility_score = int(feasibility_result.percentage)
-        survey.score_breakdown = {
-            "total_score": feasibility_result.total_score,
-            "max_possible": feasibility_result.max_possible,
-            "percentage": feasibility_result.percentage,
-            "category_scores": feasibility_result.category_scores,
-            "critical_gaps": feasibility_result.critical_gaps
+        # Build site profile dict from the 6 JSONB fields
+        site_profile = {
+            "population_capabilities": site.population_capabilities or {},
+            "staff_and_experience": site.staff_and_experience or {},
+            "facilities_and_equipment": site.facilities_and_equipment or {},
+            "operational_capabilities": site.operational_capabilities or {},
+            "historical_performance": site.historical_performance or {},
+            "compliance_and_training": site.compliance_and_training or {}
         }
-        survey.flags = feasibility_result.flags
+
+        # Get PI name from site profile
+        pi_name = site_profile.get("staff_and_experience", {}).get("principal_investigator", {}).get("name", "")
+
+        # Calculate feasibility score using new async scorer
+        try:
+            feasibility_result = await calculate_feasibility_score(
+                protocol_requirements=protocol_requirements,
+                site_profile=site_profile,
+                pi_name=pi_name,
+                site_name=site.name if site else None
+            )
+
+            # Update survey with feasibility scoring
+            survey.feasibility_score = int(feasibility_result["total_score"])
+            survey.score_breakdown = feasibility_result  # Store full breakdown as JSONB
+
+            print(f"✅ Feasibility score calculated: {feasibility_result['total_score']}/100 ({feasibility_result['grade']})")
+            print(f"   Components: {len(feasibility_result.get('components', []))} categories scored")
+            print(f"   Flags: {len(feasibility_result.get('flags', []))} issues identified")
+        except Exception as e:
+            print(f"⚠️ Feasibility auto-calculation failed: {e}")
+            # Don't fail the upload if scoring fails
+            survey.feasibility_score = None
+            survey.score_breakdown = {}
 
         # STEP 3: Enhanced survey question answering (Survey Questions vs Site Data)
         # This happens SEPARATELY from feasibility scoring
@@ -172,7 +190,7 @@ async def upload_protocol(
 
             enhanced_result = await autofill_engine.process_extracted_questions(
                 survey.survey_questions,  # Already extracted questions (correct method!)
-                site_profile_response,
+                site_profile,
                 protocol_requirements  # Pass protocol data to mapper!
             )
 
@@ -192,13 +210,14 @@ async def upload_protocol(
         return {
             "success": True,
             "extracted_fields": sum(len(v) if isinstance(v, list) else 1 for v in protocol_requirements.values()),
-            "equipment_requirements": len(protocol_requirements.get("equipment", [])),
-            "staff_requirements": len(protocol_requirements.get("staff", [])),
+            "equipment_requirements": len(protocol_requirements.get("equipment_required", [])),
+            "staff_requirements": len(protocol_requirements.get("staff_requirements", [])),
             "feasibility_score": survey.feasibility_score,
             "score_breakdown": survey.score_breakdown,
             "completion_percentage": survey.completion_percentage,
-            "flags": survey.flags,
-            "critical_gaps": feasibility_result.critical_gaps
+            "grade": survey.score_breakdown.get("grade", "Unknown") if survey.score_breakdown else None,
+            "flags": survey.score_breakdown.get("flags", []) if survey.score_breakdown else [],
+            "gaps": survey.score_breakdown.get("gaps", []) if survey.score_breakdown else []
         }
 
     except Exception as e:
@@ -213,6 +232,101 @@ async def upload_protocol(
             "feasibility_score": None,
             "flags": []
         }
+
+@router.post("/{survey_id}/calculate-feasibility")
+async def calculate_feasibility(survey_id: int, db: Session = Depends(get_session)):
+    """
+    Calculate feasibility score by comparing protocol requirements to site capabilities.
+    Uses site profile data + ClinicalTrials.gov API for historical verification.
+    """
+    import asyncio
+
+    survey = db.get(models.Survey, survey_id)
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    if not survey.protocol_extracted_data:
+        raise HTTPException(status_code=400, detail="Protocol must be uploaded first")
+
+    # Get site profile
+    site = db.get(models.Site, survey.site_id) if survey.site_id else None
+    if not site:
+        raise HTTPException(status_code=400, detail="No site associated with survey")
+
+    # Build site profile dict from the 6 JSONB fields
+    site_profile = {
+        "population_capabilities": site.population_capabilities or {},
+        "staff_and_experience": site.staff_and_experience or {},
+        "facilities_and_equipment": site.facilities_and_equipment or {},
+        "operational_capabilities": site.operational_capabilities or {},
+        "historical_performance": site.historical_performance or {},
+        "compliance_and_training": site.compliance_and_training or {}
+    }
+
+    # Get PI name from site profile
+    pi_name = None
+    staff = site_profile.get("staff_and_experience", {})
+    pi = staff.get("principal_investigator", {})
+    if pi:
+        pi_name = pi.get("name", "")
+
+    # Calculate feasibility score
+    try:
+        result = await calculate_feasibility_score(
+            protocol_requirements=survey.protocol_extracted_data,
+            site_profile=site_profile,
+            pi_name=pi_name,
+            site_name=site.name
+        )
+
+        # Store results in survey
+        survey.feasibility_score = int(result["total_score"])
+        survey.score_breakdown = result  # Store full breakdown as JSONB
+        db.commit()
+
+        return {
+            "success": True,
+            "survey_id": survey_id,
+            "feasibility_score": result["total_score"],
+            "grade": result["grade"],
+            "components": result["components"],
+            "flags": result["flags"],
+            "gaps": result["gaps"],
+            "requirements_comparison": result["requirements_comparison"]
+        }
+
+    except Exception as e:
+        print(f"Feasibility calculation error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Feasibility calculation failed: {str(e)}")
+
+
+@router.get("/{survey_id}/feasibility")
+async def get_feasibility(survey_id: int, db: Session = Depends(get_session)):
+    """Get the stored feasibility score and breakdown for a survey"""
+    survey = db.get(models.Survey, survey_id)
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    if not survey.score_breakdown:
+        return {
+            "success": False,
+            "message": "Feasibility score not yet calculated",
+            "survey_id": survey_id
+        }
+
+    breakdown = survey.score_breakdown
+    return {
+        "success": True,
+        "survey_id": survey_id,
+        "feasibility_score": survey.feasibility_score,
+        "grade": breakdown.get("grade", "Unknown"),
+        "components": breakdown.get("components", []),
+        "flags": breakdown.get("flags", []),
+        "gaps": breakdown.get("gaps", []),
+        "requirements_comparison": breakdown.get("requirements_comparison", [])
+    }
 
 @router.post("/{survey_id}/upload-survey")
 async def upload_survey_document(

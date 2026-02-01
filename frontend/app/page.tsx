@@ -88,6 +88,19 @@ const api = {
     return response.json();
   },
 
+  // Feasibility endpoints
+  async getFeasibility(surveyId: number) {
+    const response = await fetch(`${API_URL}/surveys/${surveyId}/feasibility`);
+    return response.json();
+  },
+
+  async calculateFeasibility(surveyId: number) {
+    const response = await fetch(`${API_URL}/surveys/${surveyId}/calculate-feasibility`, {
+      method: 'POST'
+    });
+    return response.json();
+  },
+
   // Site Profile endpoints
   async getSiteProfile(siteId: number) {
     const response = await fetch(`${API_URL}/site-profile/${siteId}`);
@@ -117,6 +130,7 @@ export default function SiteSync() {
   const [surveyResponses, setSurveyResponses] = useState<any[]>([]);
   const [editedResponses, setEditedResponses] = useState<{[key: string]: string}>({});
   const [siteProfile, setSiteProfile] = useState<any>(null);
+  const [feasibilityData, setFeasibilityData] = useState<any>(null);
 
   // Load initial data
   useEffect(() => {
@@ -230,7 +244,7 @@ export default function SiteSync() {
       setProcessingStage('Protocol processed and survey auto-filled!');
       setTimeout(() => {
         setProcessingStage('');
-        setCurrentView('review');
+        setCurrentView('feasibility');
       }, 2000);
     } catch (err) {
       setError('Failed to process protocol. ' + (err instanceof Error ? err.message : ''));
@@ -307,7 +321,7 @@ export default function SiteSync() {
         email: sponsorEmail,
         sponsor_name: selectedSurvey.sponsor_name || 'Sponsor',
         study_name: selectedSurvey.study_name || 'Study',
-        site_name: 'City Hospital Clinical Research Unit',
+        site_name: 'UCSD NAFLD Research Center',
         feasibility_score: selectedSurvey.feasibility_score || 'N/A',
         completion_rate: selectedSurvey.completion_percentage?.toFixed(1) || 'N/A',
       };
@@ -385,6 +399,15 @@ export default function SiteSync() {
           onEdit={handleResponseEdit}
           onSubmit={() => setCurrentView('submit')}
           onBack={() => setCurrentView('upload')}
+          onViewFeasibility={() => setCurrentView('feasibility')}
+        />;
+
+      case 'feasibility':
+        return <FeasibilityView
+          survey={selectedSurvey}
+          feasibilityData={feasibilityData}
+          setFeasibilityData={setFeasibilityData}
+          setCurrentView={setCurrentView}
         />;
 
       case 'submit':
@@ -925,7 +948,7 @@ function UploadView({ survey, onProtocolUpload, onSurveyUpload, processingStage,
 }
 
 // Review View with objective/subjective tabs
-function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBack }: any) {
+function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBack, onViewFeasibility }: any) {
   const [activeTab, setActiveTab] = useState<'objective' | 'subjective'>('objective');
 
   const objectiveResponses = responses.filter((r: any) => r.is_objective);
@@ -940,13 +963,22 @@ function ReviewView({ survey, responses, editedResponses, onEdit, onSubmit, onBa
           <h2 className="text-2xl font-bold text-black">Review Responses</h2>
           <p className="text-black">{survey.study_name}</p>
         </div>
-        <button
-          onClick={onBack}
-          className="flex items-center text-black hover:text-black"
-        >
-          <ArrowLeft className="w-4 h-4 mr-1" />
-          Back
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={onViewFeasibility}
+            className="flex items-center text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded"
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            View Feasibility Score
+          </button>
+          <button
+            onClick={onBack}
+            className="flex items-center text-black hover:text-black"
+          >
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Back
+          </button>
+        </div>
       </div>
 
       {/* Completion stats */}
@@ -1160,6 +1192,198 @@ function SubmitView({ survey, onSubmit, onBack }: any) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Feasibility View
+function FeasibilityView({ survey, feasibilityData, setFeasibilityData, setCurrentView }: any) {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadFeasibility = async () => {
+      if (survey) {
+        setLoading(true);
+        const data = await api.getFeasibility(survey.id);
+        if (data.success && data.components?.length > 0) {
+          setFeasibilityData(data);
+        } else {
+          // Calculate if not exists
+          const calculated = await api.calculateFeasibility(survey.id);
+          setFeasibilityData(calculated);
+        }
+        setLoading(false);
+      }
+    };
+    loadFeasibility();
+  }, [survey]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Analyzing feasibility...</p>
+          <p className="text-sm text-gray-400 mt-2">Checking ClinicalTrials.gov and site capabilities</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!feasibilityData) {
+    return <div className="text-center py-8 text-gray-500">Unable to load feasibility data</div>;
+  }
+
+  const getGradeColor = (grade: string) => {
+    switch (grade) {
+      case 'Strong Fit': return 'bg-green-500';
+      case 'Good Fit': return 'bg-green-400';
+      case 'Moderate Fit': return 'bg-yellow-500';
+      case 'Weak Fit': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 85) return 'bg-green-500';
+    if (score >= 70) return 'bg-green-400';
+    if (score >= 55) return 'bg-yellow-500';
+    return 'bg-red-500';
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">Feasibility Analysis</h2>
+        <p className="text-gray-500">
+          {survey?.sponsor_name} • {survey?.study_name}
+        </p>
+      </div>
+
+      {/* Score Card */}
+      <div className="bg-white rounded-xl shadow-lg p-8 mb-6 text-center">
+        <div className="text-6xl font-bold text-green-600 mb-2">
+          {feasibilityData.feasibility_score}
+          <span className="text-3xl text-gray-400">/100</span>
+        </div>
+        <div className={`inline-block px-4 py-2 rounded-full text-white font-semibold ${getGradeColor(feasibilityData.grade)}`}>
+          {feasibilityData.grade}
+        </div>
+      </div>
+
+      {/* Score Breakdown */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Score Contributors</h3>
+        <div className="space-y-4">
+          {feasibilityData.components?.map((component: any, index: number) => (
+            <div key={index}>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-medium text-gray-700">{component.category}</span>
+                <span className="text-sm text-gray-500">
+                  {component.weighted_score.toFixed(1)} / {(component.weight * 100).toFixed(0)} pts
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className={`h-3 rounded-full ${getScoreColor(component.score)}`}
+                  style={{ width: `${component.score}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{component.rationale}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Flags & Gaps */}
+      {(feasibilityData.flags?.length > 0 || feasibilityData.gaps?.length > 0) && (
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+            <span className="mr-2">⚠️</span> Flags & Gaps
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {feasibilityData.flags?.map((flag: string, index: number) => (
+              <span key={index} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
+                {flag}
+              </span>
+            ))}
+            {feasibilityData.gaps?.map((gap: string, index: number) => (
+              <span key={index} className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm">
+                {gap}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI Assessment Section */}
+      {feasibilityData.ai_assessment?.ai_generated && feasibilityData.ai_assessment?.assessment && (
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-lg p-6 mb-6 border border-blue-100">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+            <span className="mr-2">🤖</span> AI-Powered Assessment
+          </h3>
+          <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line leading-relaxed">
+            {feasibilityData.ai_assessment.assessment}
+          </div>
+          <div className="mt-4 pt-4 border-t border-blue-200 flex items-center justify-between">
+            <div className="text-xs text-gray-500">
+              Generated by GPT-4o
+            </div>
+            <div className="text-xs text-blue-600 font-medium">
+              AI-Enhanced Analysis
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Requirements Comparison Table */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Protocol Requirements vs Site Capabilities</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="text-left p-3 font-semibold text-gray-700">Requirement</th>
+                <th className="text-left p-3 font-semibold text-gray-700">Protocol Needs</th>
+                <th className="text-left p-3 font-semibold text-gray-700">Site Has</th>
+                <th className="text-center p-3 font-semibold text-gray-700">Match</th>
+              </tr>
+            </thead>
+            <tbody>
+              {feasibilityData.requirements_comparison?.map((req: any, index: number) => (
+                <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="p-3 text-gray-800">{req.requirement}</td>
+                  <td className="p-3 text-gray-600">{req.protocol_needs}</td>
+                  <td className="p-3 text-gray-600">{req.site_has}</td>
+                  <td className="p-3 text-center text-xl">{req.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Data Sources */}
+      <div className="text-center text-sm text-gray-400 mb-6">
+        Data Sources: Site Profile, ClinicalTrials.gov
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex justify-center gap-4">
+        <button
+          onClick={() => setCurrentView('review')}
+          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+        >
+          Review Answers
+        </button>
+        <button
+          onClick={() => setCurrentView('upload')}
+          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+        >
+          Back to Upload
+        </button>
       </div>
     </div>
   );
@@ -1669,25 +1893,25 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
                 {profile.facilities_and_equipment?.laboratory?.on_site_lab && (
                   <div className="flex items-center">
                     <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                    <span className="text-sm">On-site Clinical Lab (CLIA Certified)</span>
+                    <span className="text-sm text-gray-800">On-site Clinical Lab (CLIA Certified)</span>
                   </div>
                 )}
                 {profile.facilities_and_equipment?.pharmacy?.investigational_drug_storage?.freezer_minus80C && (
                   <div className="flex items-center">
                     <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                    <span className="text-sm">-80°C Freezer Available</span>
+                    <span className="text-sm text-gray-800">-80°C Freezer Available</span>
                   </div>
                 )}
                 {profile.facilities_and_equipment?.pharmacy?.temperature_monitoring && (
                   <div className="flex items-center">
                     <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                    <span className="text-sm">Temperature Monitoring & Backup Power</span>
+                    <span className="text-sm text-gray-800">Temperature Monitoring & Backup Power</span>
                   </div>
                 )}
                 {profile.facilities_and_equipment?.laboratory?.sample_processing && (
                   <div className="flex items-center">
                     <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                    <span className="text-sm">Sample Processing Available</span>
+                    <span className="text-sm text-gray-800">Sample Processing Available</span>
                   </div>
                 )}
                 {/* Show capabilities array if available */}
@@ -1695,7 +1919,7 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
                   profile.facilities_and_equipment.laboratory.capabilities.slice(0, 4).map((cap: string, idx: number) => (
                     <div key={idx} className="flex items-center">
                       <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                      <span className="text-sm capitalize">{cap}</span>
+                      <span className="text-sm text-gray-800 capitalize">{cap}</span>
                     </div>
                   ))
                 }
@@ -1731,7 +1955,7 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
           <div className="grid md:grid-cols-4 gap-6">
             <div className="text-center bg-orange-50 p-4 rounded-lg">
               <p className="text-2xl font-bold text-orange-600">
-                {profile.historical_performance?.studies_conducted_last_5_years || 45}
+                {profile.historical_performance?.studies_completed_last_5_years || 45}
               </p>
               <p className="text-sm text-orange-700">Studies (5 years)</p>
             </div>
@@ -1759,16 +1983,16 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
               <h4 className="font-semibold text-gray-800 mb-2">Studies by Phase</h4>
               <div className="space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-sm">Phase I:</span>
-                  <span className="text-sm font-medium">{profile.historical_performance?.studies_by_phase?.['Phase I'] || 2}</span>
+                  <span className="text-sm text-gray-800">Phase I:</span>
+                  <span className="text-sm text-gray-800 font-medium">{profile.historical_performance?.studies_by_phase?.['Phase I'] || 2}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm">Phase II:</span>
-                  <span className="text-sm font-medium">{profile.historical_performance?.studies_by_phase?.['Phase II'] || 10}</span>
+                  <span className="text-sm text-gray-800">Phase II:</span>
+                  <span className="text-sm text-gray-800 font-medium">{profile.historical_performance?.studies_by_phase?.['Phase II'] || 10}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm">Phase III:</span>
-                  <span className="text-sm font-medium">{profile.historical_performance?.studies_by_phase?.['Phase III'] || 20}</span>
+                  <span className="text-sm text-gray-800">Phase III:</span>
+                  <span className="text-sm text-gray-800 font-medium">{profile.historical_performance?.studies_by_phase?.['Phase III'] || 20}</span>
                 </div>
               </div>
             </div>
@@ -1781,7 +2005,7 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
                 ).slice(0, 6).map((area: string, idx: number) => (
                   <div key={idx} className="flex items-center">
                     <CheckCircle className="w-3 h-3 text-blue-600 mr-2" />
-                    <span className="text-sm">{area}</span>
+                    <span className="text-sm text-gray-800">{area}</span>
                   </div>
                 ))}
               </div>
@@ -1789,8 +2013,8 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div>
               <h4 className="font-semibold text-gray-800 mb-2">Quality Metrics</h4>
               <div className="space-y-1">
-                <p className="text-sm">Protocol Deviations: <span className="font-medium">{profile.historical_performance?.protocol_deviation_rate || '<2%'}</span></p>
-                <p className="text-sm">Query Resolution: <span className="font-medium">{profile.historical_performance?.average_query_resolution_time || '3 days'}</span></p>
+                <p className="text-sm text-gray-800">Protocol Deviations: <span className="font-medium">{profile.historical_performance?.protocol_deviation_rate || '<2%'}</span></p>
+                <p className="text-sm text-gray-800">Query Resolution: <span className="font-medium">{profile.historical_performance?.average_query_resolution_time || '3 days'}</span></p>
               </div>
             </div>
           </div>
@@ -1809,7 +2033,7 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
                 {(profile.historical_performance?.sponsor_types_experience || ['Industry (Pharma/CRO)', 'NIH-funded', 'Investigator-Initiated']).map((type: string, idx: number) => (
                   <div key={idx} className="flex items-center">
                     <CheckCircle className="w-4 h-4 text-teal-600 mr-2" />
-                    <span className="text-sm">{type}</span>
+                    <span className="text-sm text-gray-800">{type}</span>
                   </div>
                 ))}
               </div>
@@ -1817,9 +2041,9 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
             <div>
               <h3 className="font-semibold text-gray-800 mb-3">Operational Capabilities</h3>
               <div className="space-y-2">
-                <p className="text-sm"><strong>Data Systems:</strong> {profile.operational_capabilities?.data_systems || 'CTMS (OnCore), EHR (Epic), EDC experience'}</p>
-                <p className="text-sm"><strong>Pharmacy:</strong> {profile.operational_capabilities?.pharmacy || 'On-site investigational pharmacy'}</p>
-                <p className="text-sm"><strong>Inpatient Support:</strong> {profile.operational_capabilities?.inpatient_support ? 'Available' : 'Not Available'}</p>
+                <p className="text-sm text-gray-800"><strong>Data Systems:</strong> {profile.operational_capabilities?.data_systems || profile.operational_capabilities?.emr_system || 'CTMS (OnCore), EHR (Epic), EDC experience'}</p>
+                <p className="text-sm text-gray-800"><strong>Pharmacy:</strong> {profile.operational_capabilities?.pharmacy || 'On-site investigational pharmacy'}</p>
+                <p className="text-sm text-gray-800"><strong>Inpatient Support:</strong> {profile.operational_capabilities?.inpatient_capability ? 'Available' : 'Not Available'}</p>
               </div>
             </div>
           </div>
@@ -1841,15 +2065,15 @@ function SiteProfileView({ profile, onUpdate, onBack }: any) {
               <div className="space-y-1">
                 <div className="flex items-center">
                   <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
-                  <span className="text-xs">GCP Certified</span>
+                  <span className="text-xs text-green-700">GCP Certified</span>
                 </div>
                 <div className="flex items-center">
                   <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
-                  <span className="text-xs">HSP Training</span>
+                  <span className="text-xs text-green-700">HSP Training</span>
                 </div>
                 <div className="flex items-center">
                   <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
-                  <span className="text-xs">IATA Certified</span>
+                  <span className="text-xs text-green-700">IATA Certified</span>
                 </div>
               </div>
             </div>
