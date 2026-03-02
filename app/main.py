@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import sites, demo, protocols, drafts, whatif, feasibility
-from app.routes import llm, surveys, site_profile
+from app.routes import llm, surveys, site_profile, sponsor
+from app.routes import screener as screener_routes
 from app.config import settings
 import logging
 
@@ -40,12 +41,14 @@ app.include_router(feasibility.router)
 app.include_router(llm.router)
 app.include_router(surveys.router)
 app.include_router(site_profile.router)
+app.include_router(sponsor.router)
+app.include_router(screener_routes.router)
 
 @app.on_event("startup")
 async def startup_event():
     """Log startup information"""
-    logger.info("✅ SiteSync API ready to accept requests")
-    logger.info(f"🤖 AI Model: {settings.LLM_MODEL} (with automatic fallback to {settings.LLM_FALLBACK_MODEL})")
+    logger.info("SiteSync API ready to accept requests")
+    logger.info(f"AI Model: {settings.LLM_MODEL} (with automatic fallback to {settings.LLM_FALLBACK_MODEL})")
 
 @app.get("/health")
 def health():

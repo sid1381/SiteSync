@@ -230,3 +230,137 @@ class SurveyResponse(Base):
     edited_at = Column(DateTime)
 
     survey = relationship("Survey", back_populates="responses")
+
+
+# =============================================================================
+# Screener Models - Sponsor/Consultant-facing site feasibility screening
+# =============================================================================
+
+class ScreenerProject(Base):
+    """Screener project for site feasibility analysis."""
+    __tablename__ = "screener_projects"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    status = Column(String(50), default="draft")  # draft, analyzing, countries_ready, complete
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Protocol extraction results
+    protocol_file_path = Column(String(500), nullable=True)
+    protocol_criteria = Column(JSON, nullable=True)  # ProtocolCriteria as dict
+
+    # Scoring weights (user-adjustable)
+    country_weights = Column(JSON, default={
+        "trial_experience": 0.30,
+        "site_density": 0.25,
+        "competition": 0.20,
+        "regulatory": 0.15,
+        "prevalence": 0.10
+    })
+    site_weights = Column(JSON, default={
+        "experience": 0.35,
+        "pi_strength": 0.20,
+        "capacity": 0.20,
+        "compliance": 0.15,
+        "protocol_match": 0.10
+    })
+    site_country_ratio = Column(Float, default=0.7)  # site weight in final score
+
+    # Flexible metadata storage (Citeline enrichments, user notes, etc.)
+    extra_data = Column(JSON, default={}, nullable=True)
+
+    # Relationships
+    country_results = relationship("ScreenerCountryResult", back_populates="project", cascade="all, delete-orphan")
+    site_results = relationship("ScreenerSiteResult", back_populates="project", cascade="all, delete-orphan")
+
+
+class ScreenerCountryResult(Base):
+    """Country-level feasibility results for a screener project."""
+    __tablename__ = "screener_country_results"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("screener_projects.id", ondelete="CASCADE"), nullable=False)
+    country_name = Column(String(100))
+    country_code = Column(String(10))
+
+    # Raw data from ClinicalTrials.gov
+    total_trials = Column(Integer, default=0)
+    indication_trials = Column(Integer, default=0)
+    site_count = Column(Integer, default=0)
+    investigator_count = Column(Integer, default=0)
+    competing_trials = Column(Integer, default=0)
+
+    # Scores (0-100)
+    trial_experience_score = Column(Float, default=0)
+    site_density_score = Column(Float, default=0)
+    competition_score = Column(Float, default=0)
+    regulatory_score = Column(Float, default=0)
+    prevalence_score = Column(Float, default=0)
+    composite_score = Column(Float, default=0)
+
+    # AI-generated content
+    regulatory_summary = Column(Text, nullable=True)
+    prevalence_estimate = Column(Text, nullable=True)
+
+    # Metadata
+    data_sources = Column(JSON, nullable=True)  # Which sources contributed
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship
+    project = relationship("ScreenerProject", back_populates="country_results")
+
+
+class ScreenerSiteResult(Base):
+    """Site-level feasibility results within a country."""
+    __tablename__ = "screener_site_results"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("screener_projects.id", ondelete="CASCADE"), nullable=False)
+    country_code = Column(String(10))
+
+    # Site identification
+    site_name = Column(String(500))
+    city = Column(String(200))
+    state = Column(String(100), nullable=True)
+    country = Column(String(100))
+
+    # PI info
+    pi_name = Column(String(255), nullable=True)
+    pi_publications = Column(Integer, default=0)
+
+    # Trial history
+    total_trials = Column(Integer, default=0)
+    indication_trials = Column(Integer, default=0)
+    phase_match_trials = Column(Integer, default=0)
+    completed_trials = Column(Integer, default=0)
+    terminated_trials = Column(Integer, default=0)
+    recruiting_trials = Column(Integer, default=0)
+
+    # FDA data (from openFDA enrichment)
+    fda_inspections = Column(Integer, default=0)
+    fda_warnings = Column(Integer, default=0)
+    is_debarred = Column(Boolean, default=False)
+
+    # Scores (0-100)
+    experience_score = Column(Float, default=0)
+    pi_strength_score = Column(Float, default=0)
+    capacity_score = Column(Float, default=0)
+    compliance_score = Column(Float, default=0)
+    protocol_match_score = Column(Float, default=0)
+    site_composite_score = Column(Float, default=0)
+    final_score = Column(Float, default=0)  # site + country weighted
+
+    # AI analysis
+    gap_analysis = Column(Text, nullable=True)
+    red_flags = Column(JSON, nullable=True)
+
+    # Shortlist status
+    is_shortlisted = Column(Boolean, default=False)
+
+    # Metadata
+    data_sources = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship
+    project = relationship("ScreenerProject", back_populates="site_results")

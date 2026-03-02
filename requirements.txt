@@ -15,3 +15,5 @@ pandas==2.0.3
 openpyxl==3.1.2
 reportlab==4.0.4
 tenacity==8.2.3  # Retry logic for API calls
+PyMuPDF>=1.23.0  # PDF parsing for protocol extraction
+rapidfuzz>=3.0.0  # Fuzzy string matching for Citeline data

@@ -1,0 +1,13 @@
+/* Fix for Leaflet default marker icons not loading in Next.js */
+.leaflet-container {
+  font-family: inherit;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px;
+}

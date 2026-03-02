@@ -4,11 +4,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Upload, FileText, CheckCircle, AlertCircle, ChevronRight,
+  Upload, FileText, CheckCircle, AlertCircle, ChevronRight, ChevronDown,
   Loader2, BarChart3, Users, ClipboardCheck, Sliders, Send,
   ArrowLeft, Building2, Clock, Target, TrendingUp, AlertTriangle,
-  Plus, Calendar, Mail, Download, FileSpreadsheet,
-  CheckSquare, Square, Edit3, Save, X, Shield, Award, Zap
+  Plus, Calendar, Mail, Download, FileSpreadsheet, ExternalLink,
+  CheckSquare, Square, Edit3, Save, X, Shield, Award, Zap, Check
 } from 'lucide-react';
 import emailjs from '@emailjs/browser';
 
@@ -362,7 +362,7 @@ export default function SiteSync() {
       case 'inbox':
         return <InboxView
           surveys={surveys}
-          onSelectSurvey={(survey) => {
+          onSelectSurvey={(survey: any) => {
             setSelectedSurvey(survey);
             setCurrentView('upload');
           }}
@@ -378,7 +378,7 @@ export default function SiteSync() {
       case 'profile':
         return <SiteProfileView
           profile={siteProfile}
-          onUpdate={(profileData) => updateSiteProfile(profileData)}
+          onUpdate={(profileData: any) => updateSiteProfile(profileData)}
           onBack={() => setCurrentView('dashboard')}
         />;
 
@@ -408,6 +408,7 @@ export default function SiteSync() {
           feasibilityData={feasibilityData}
           setFeasibilityData={setFeasibilityData}
           setCurrentView={setCurrentView}
+          siteProfile={siteProfile}
         />;
 
       case 'submit':
@@ -1197,8 +1198,448 @@ function SubmitView({ survey, onSubmit, onBack }: any) {
   );
 }
 
-// Feasibility View
-function FeasibilityView({ survey, feasibilityData, setFeasibilityData, setCurrentView }: any) {
+// ============== HELPER COMPONENTS FOR FEASIBILITY VIEW ==============
+
+// Expandable Score Contributor Card with Criteria-Based Scoring Table
+function ScoreContributorCard({ component }: { component: any }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const getScoreColor = (score: number) => {
+    if (score >= 85) return 'bg-green-500';
+    if (score >= 70) return 'bg-green-400';
+    if (score >= 55) return 'bg-yellow-500';
+    return 'bg-red-500';
+  };
+
+  const getConfidenceBadge = (confidence: string) => {
+    switch (confidence) {
+      case 'HIGH': return 'bg-green-100 text-green-700';
+      case 'MODERATE': return 'bg-yellow-100 text-yellow-700';
+      case 'LOW': return 'bg-gray-100 text-gray-600';
+      default: return 'bg-gray-100 text-gray-600';
+    }
+  };
+
+  const criteriaScores = component.criteria_scores;
+  const breakdown = component.scoring_breakdown;
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex justify-between items-center mb-2">
+          <div className="flex items-center gap-3">
+            <span className="font-medium text-gray-900">{component.category}</span>
+            {component.confidence && (
+              <span className={`px-2 py-0.5 text-xs rounded-full ${getConfidenceBadge(component.confidence)}`}>
+                {component.confidence}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-bold text-gray-900">{Math.round(component.score)}</span>
+            <span className="text-gray-500">/100</span>
+            <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </div>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2.5">
+          <div
+            className={`h-2.5 rounded-full transition-all ${getScoreColor(component.score)}`}
+            style={{ width: `${component.score}%` }}
+          />
+        </div>
+        {/* Brief reasoning below progress bar */}
+        <p className="text-sm text-gray-600 mt-2">
+          {component.reasoning || component.rationale}
+        </p>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-gray-100 bg-gray-50">
+          {/* Criteria-Based Scoring Table (New Format) */}
+          {criteriaScores && criteriaScores.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {/* Criteria Table */}
+              <div className="overflow-hidden rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Criterion
+                      </th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Site Data
+                      </th>
+                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Points
+                      </th>
+                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {criteriaScores.map((criterion: any, i: number) => (
+                      <tr key={i} className={criterion.is_max ? 'bg-green-50' : ''}>
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-gray-900">{criterion.criterion_name}</div>
+                          <div className="text-xs text-gray-500">{criterion.threshold_matched}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-sm text-gray-700">{criterion.site_value_formatted}</div>
+                          {criterion.data_source && (
+                            <div className="text-xs text-gray-400 truncate max-w-[150px]" title={criterion.data_source}>
+                              {criterion.data_source}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`font-mono font-bold ${criterion.is_max ? 'text-green-600' : 'text-gray-700'}`}>
+                            {criterion.points_earned}
+                          </span>
+                          <span className="text-gray-400 font-mono">/{criterion.max_points}</span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {criterion.is_max ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                              <Check className="w-3 h-3" />
+                              Max
+                            </span>
+                          ) : criterion.next_threshold ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">
+                              +{criterion.next_threshold.points_gain} avail
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-100">
+                    <tr>
+                      <td colSpan={2} className="px-4 py-2 text-right font-medium text-gray-700">
+                        Category Total
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <span className="font-mono font-bold text-gray-900">
+                          {component.total_points_earned ?? criteriaScores.reduce((sum: number, c: any) => sum + c.points_earned, 0)}
+                        </span>
+                        <span className="text-gray-400 font-mono">
+                          /{component.total_max_points ?? criteriaScores.reduce((sum: number, c: any) => sum + c.max_points, 0)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-center font-bold text-gray-900">
+                        {Math.round(component.score)}%
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Improvement Path - Show criteria with available points */}
+              {criteriaScores.filter((c: any) => !c.is_max && c.next_threshold).length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
+                    <span className="text-lg">📈</span>
+                    Improvement Path
+                  </h4>
+                  <div className="space-y-2">
+                    {criteriaScores
+                      .filter((c: any) => !c.is_max && c.next_threshold)
+                      .sort((a: any, b: any) => b.next_threshold.points_gain - a.next_threshold.points_gain)
+                      .map((criterion: any, i: number) => (
+                        <div key={i} className="flex items-start gap-3 text-sm">
+                          <span className="flex-shrink-0 font-mono font-bold text-blue-600 w-14 text-right">
+                            +{criterion.next_threshold.points_gain} pts
+                          </span>
+                          <div className="text-gray-700">
+                            <span className="font-medium">{criterion.criterion_name}:</span>{' '}
+                            Reach {criterion.next_threshold.required_value}+ for "{criterion.next_threshold.label}"
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Improvement Suggestions (from AI) */}
+              {component.improvement_suggestions && component.improvement_suggestions.length > 0 && (
+                <div className="pt-4 border-t border-gray-200">
+                  <h4 className="font-medium text-blue-700 mb-2 flex items-center gap-2">
+                    <span className="text-lg">💡</span>
+                    Recommendations
+                  </h4>
+                  <ul className="space-y-1">
+                    {component.improvement_suggestions.map((s: string, i: number) => (
+                      <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                        <span className="text-blue-500">→</span>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : breakdown ? (
+            /* Legacy Format: Show scoring breakdown for backward compatibility */
+            <div className="mt-4 space-y-4">
+              {/* Base Score */}
+              <div className="flex items-center justify-between py-2 border-b border-gray-200">
+                <span className="text-sm text-gray-600">Base Score</span>
+                <span className="font-mono font-medium text-gray-700">{breakdown.base_score} pts</span>
+              </div>
+
+              {/* Positive Factors */}
+              {breakdown.positive_factors && breakdown.positive_factors.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-green-700 mb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-sm">+</span>
+                    Strengths
+                  </h4>
+                  <div className="space-y-2">
+                    {breakdown.positive_factors.map((factor: any, i: number) => (
+                      <div key={i} className="flex items-start gap-3 bg-green-50 rounded-lg p-3">
+                        <span className="flex-shrink-0 font-mono font-bold text-green-600 w-16 text-right">
+                          +{factor.points} pts
+                        </span>
+                        <span className="text-sm text-gray-700">{factor.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Negative Factors */}
+              {breakdown.negative_factors && breakdown.negative_factors.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-red-700 mb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center text-sm">−</span>
+                    Areas for Improvement
+                  </h4>
+                  <div className="space-y-2">
+                    {breakdown.negative_factors.map((factor: any, i: number) => (
+                      <div key={i} className="flex items-start gap-3 bg-red-50 rounded-lg p-3">
+                        <span className="flex-shrink-0 font-mono font-bold text-red-600 w-16 text-right">
+                          {factor.points} pts
+                        </span>
+                        <span className="text-sm text-gray-700">{factor.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Final Score Calculation */}
+              <div className="flex items-center justify-between py-2 border-t border-gray-200 mt-2">
+                <span className="font-medium text-gray-700">Final Score</span>
+                <span className="font-mono font-bold text-lg text-gray-900">
+                  {breakdown.final_score || component.score}/100
+                </span>
+              </div>
+
+              {/* Improvement Suggestions */}
+              {component.improvement_suggestions && component.improvement_suggestions.length > 0 && (
+                <div className="pt-4 border-t border-gray-200">
+                  <h4 className="font-medium text-blue-700 mb-2 flex items-center gap-2">
+                    <span className="text-lg">💡</span>
+                    How to Improve This Score
+                  </h4>
+                  <ul className="space-y-1">
+                    {component.improvement_suggestions.map((s: string, i: number) => (
+                      <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                        <span className="text-blue-500">→</span>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Fallback for old data without any breakdown */
+            <div className="mt-4 space-y-4">
+              {/* Details */}
+              {component.details && component.details.length > 0 && (
+                <div>
+                  <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Evidence</h5>
+                  <ul className="space-y-1">
+                    {component.details.map((detail: string, i: number) => (
+                      <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                        <span className="text-green-500 mt-0.5">✓</span>
+                        {detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Improvement Suggestions */}
+              {component.improvement_suggestions && component.improvement_suggestions.length > 0 && (
+                <div>
+                  <h5 className="text-xs font-semibold text-gray-500 uppercase mb-2">Improvement Suggestions</h5>
+                  <ul className="space-y-1">
+                    {component.improvement_suggestions.map((suggestion: string, i: number) => (
+                      <li key={i} className="text-sm text-blue-700 flex items-start gap-2">
+                        <span className="text-blue-500 mt-0.5">→</span>
+                        {suggestion}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Flag Card Component
+function FlagCard({ flag }: { flag: any }) {
+  const getSeverityStyle = (severity: string) => {
+    switch (severity) {
+      case 'RED': return 'border-red-300 bg-red-50';
+      case 'YELLOW': return 'border-yellow-300 bg-yellow-50';
+      case 'GREEN': return 'border-green-300 bg-green-50';
+      default: return 'border-gray-300 bg-gray-50';
+    }
+  };
+
+  const getSeverityIcon = (severity: string) => {
+    switch (severity) {
+      case 'RED': return '🔴';
+      case 'YELLOW': return '🟡';
+      case 'GREEN': return '🟢';
+      default: return '⚪';
+    }
+  };
+
+  const getSeverityTextColor = (severity: string) => {
+    switch (severity) {
+      case 'RED': return 'text-red-800';
+      case 'YELLOW': return 'text-yellow-800';
+      case 'GREEN': return 'text-green-800';
+      default: return 'text-gray-800';
+    }
+  };
+
+  return (
+    <div className={`p-4 rounded-lg border ${getSeverityStyle(flag.severity)}`}>
+      <div className="flex items-start gap-3">
+        <span className="text-lg">{getSeverityIcon(flag.severity)}</span>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <h4 className={`font-medium ${getSeverityTextColor(flag.severity)}`}>{flag.title}</h4>
+            {flag.potential_score_gain && (
+              <span className="text-sm font-semibold text-blue-600">+{flag.potential_score_gain} pts potential</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-700 mt-1">{flag.details}</p>
+          {flag.impact && (
+            <p className="text-xs text-gray-500 mt-2">
+              <strong>Impact:</strong> {flag.impact}
+            </p>
+          )}
+          {flag.recommendation && (
+            <p className="text-xs text-blue-600 mt-1">
+              <strong>Recommendation:</strong> {flag.recommendation}
+            </p>
+          )}
+          {flag.category && (
+            <span className="inline-block mt-2 px-2 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">
+              {flag.category}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// CT.gov Verification Section
+function CTGovVerificationSection({ siteProfile }: { siteProfile: any }) {
+  const piName = siteProfile?.staff_and_experience?.principal_investigator?.name;
+  const piTrials = siteProfile?.staff_and_experience?.principal_investigator?.trials_conducted;
+  const historicalData = siteProfile?.historical_performance;
+
+  if (!piName && !historicalData) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border p-6">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <span>🔬</span> ClinicalTrials.gov Verification
+      </h3>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* PI Verification */}
+        {piName && (
+          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h4 className="font-medium text-blue-900 mb-2">Principal Investigator</h4>
+            <p className="text-gray-800 font-semibold">{piName}</p>
+            {piTrials && (
+              <p className="text-sm text-blue-700 mt-1">
+                {piTrials} trials conducted
+              </p>
+            )}
+            <a
+              href={`https://clinicaltrials.gov/search?intr=${encodeURIComponent(piName)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mt-2"
+            >
+              View on CT.gov <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        )}
+
+        {/* Historical Performance */}
+        {historicalData && (
+          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+            <h4 className="font-medium text-green-900 mb-2">Historical Performance</h4>
+            <div className="space-y-1 text-sm">
+              {historicalData.studies_completed_last_5_years && (
+                <p className="text-gray-800">
+                  <span className="font-semibold">{historicalData.studies_completed_last_5_years}</span> studies (5 years)
+                </p>
+              )}
+              {historicalData.patients_enrolled_last_5_years && (
+                <p className="text-gray-800">
+                  <span className="font-semibold">{historicalData.patients_enrolled_last_5_years.toLocaleString()}</span> patients enrolled
+                </p>
+              )}
+              {historicalData.enrollment_success_rate && (
+                <p className="text-gray-800">
+                  <span className="font-semibold">{historicalData.enrollment_success_rate}%</span> enrollment success
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Therapeutic Experience */}
+      {historicalData?.therapeutic_experience && historicalData.therapeutic_experience.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Therapeutic Experience</h4>
+          <div className="flex flex-wrap gap-2">
+            {historicalData.therapeutic_experience.map((area: string, i: number) => (
+              <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
+                {area}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============== MAIN FEASIBILITY VIEW ==============
+function FeasibilityView({ survey, feasibilityData, setFeasibilityData, setCurrentView, siteProfile }: any) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1224,8 +1665,8 @@ function FeasibilityView({ survey, feasibilityData, setFeasibilityData, setCurre
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Analyzing feasibility...</p>
-          <p className="text-sm text-gray-400 mt-2">Checking ClinicalTrials.gov and site capabilities</p>
+          <p className="text-gray-600">Analyzing feasibility with AI...</p>
+          <p className="text-sm text-gray-400 mt-2">Comparing protocol requirements to site capabilities</p>
         </div>
       </div>
     );
@@ -1235,72 +1676,82 @@ function FeasibilityView({ survey, feasibilityData, setFeasibilityData, setCurre
     return <div className="text-center py-8 text-gray-500">Unable to load feasibility data</div>;
   }
 
-  const getGradeColor = (grade: string) => {
-    switch (grade) {
-      case 'Strong Fit': return 'bg-green-500';
-      case 'Good Fit': return 'bg-green-400';
-      case 'Moderate Fit': return 'bg-yellow-500';
-      case 'Weak Fit': return 'bg-red-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 85) return 'bg-green-500';
-    if (score >= 70) return 'bg-green-400';
-    if (score >= 55) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
+  // Use total_score or feasibility_score for backward compatibility
+  const totalScore = feasibilityData.total_score ?? feasibilityData.feasibility_score ?? 0;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Feasibility Analysis</h2>
-        <p className="text-gray-500">
-          {survey?.sponsor_name} • {survey?.study_name}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Feasibility Analysis</h2>
+          <p className="text-gray-600">{survey?.sponsor_name} • {survey?.study_name}</p>
+        </div>
+        {feasibilityData.confidence_level && (
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+            feasibilityData.confidence_level === 'HIGH' ? 'bg-green-100 text-green-800' :
+            feasibilityData.confidence_level === 'MODERATE' ? 'bg-yellow-100 text-yellow-800' :
+            'bg-gray-100 text-gray-800'
+          }`}>
+            {feasibilityData.confidence_level} Confidence
+          </div>
+        )}
       </div>
 
       {/* Score Card */}
-      <div className="bg-white rounded-xl shadow-lg p-8 mb-6 text-center">
-        <div className="text-6xl font-bold text-green-600 mb-2">
-          {feasibilityData.feasibility_score}
+      <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-8 text-center">
+        <div className="text-6xl font-bold mb-2">
+          <span className={
+            totalScore >= 85 ? 'text-green-500' :
+            totalScore >= 70 ? 'text-green-600' :
+            totalScore >= 55 ? 'text-yellow-500' :
+            'text-red-500'
+          }>
+            {Math.round(totalScore)}
+          </span>
           <span className="text-3xl text-gray-400">/100</span>
         </div>
-        <div className={`inline-block px-4 py-2 rounded-full text-white font-semibold ${getGradeColor(feasibilityData.grade)}`}>
-          {feasibilityData.grade}
-        </div>
+        <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${
+          feasibilityData.grade === 'Strong Fit' ? 'bg-green-500 text-white' :
+          feasibilityData.grade === 'Good Fit' ? 'bg-green-400 text-white' :
+          feasibilityData.grade === 'Moderate Fit' ? 'bg-yellow-500 text-white' :
+          'bg-red-500 text-white'
+        }`}>
+          {feasibilityData.grade || 'Unknown'}
+        </span>
+        {feasibilityData.data_completeness !== undefined && (
+          <p className="text-sm text-gray-600 mt-3">
+            Profile Completeness: {Math.round(feasibilityData.data_completeness * 100)}%
+          </p>
+        )}
       </div>
 
-      {/* Score Breakdown */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Score Contributors</h3>
-        <div className="space-y-4">
-          {feasibilityData.components?.map((component: any, index: number) => (
-            <div key={index}>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm font-medium text-gray-700">{component.category}</span>
-                <span className="text-sm text-gray-500">
-                  {component.weighted_score.toFixed(1)} / {(component.weight * 100).toFixed(0)} pts
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div
-                  className={`h-3 rounded-full ${getScoreColor(component.score)}`}
-                  style={{ width: `${component.score}%` }}
-                ></div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">{component.rationale}</p>
-            </div>
+      {/* Score Contributors - Expandable */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Score Contributors</h3>
+        <div className="space-y-2">
+          {feasibilityData.components?.map((component: any, idx: number) => (
+            <ScoreContributorCard key={idx} component={component} />
           ))}
         </div>
       </div>
 
-      {/* Flags & Gaps */}
-      {(feasibilityData.flags?.length > 0 || feasibilityData.gaps?.length > 0) && (
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+      {/* Detailed Flags Section */}
+      {feasibilityData.detailed_flags && feasibilityData.detailed_flags.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Assessment Flags</h3>
+          <div className="space-y-3">
+            {feasibilityData.detailed_flags.map((flag: any, idx: number) => (
+              <FlagCard key={idx} flag={flag} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Legacy Flags & Gaps (backward compatibility) */}
+      {!feasibilityData.detailed_flags && (feasibilityData.flags?.length > 0 || feasibilityData.gaps?.length > 0) && (
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
             <span className="mr-2">⚠️</span> Flags & Gaps
           </h3>
           <div className="flex flex-wrap gap-2">
@@ -1318,69 +1769,175 @@ function FeasibilityView({ survey, feasibilityData, setFeasibilityData, setCurre
         </div>
       )}
 
-      {/* AI Assessment Section */}
-      {feasibilityData.ai_assessment?.ai_generated && feasibilityData.ai_assessment?.assessment && (
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-lg p-6 mb-6 border border-blue-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-            <span className="mr-2">🤖</span> AI-Powered Assessment
-          </h3>
-          <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line leading-relaxed">
-            {feasibilityData.ai_assessment.assessment}
-          </div>
-          <div className="mt-4 pt-4 border-t border-blue-200 flex items-center justify-between">
-            <div className="text-xs text-gray-500">
-              Generated by GPT-4o
-            </div>
-            <div className="text-xs text-blue-600 font-medium">
-              AI-Enhanced Analysis
-            </div>
+      {/* Improvement Opportunities */}
+      {feasibilityData.improvement_opportunities && feasibilityData.improvement_opportunities.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">💡 Improvement Opportunities</h3>
+          <div className="space-y-3">
+            {feasibilityData.improvement_opportunities.map((opp: any, idx: number) => (
+              <div key={idx} className="flex items-start gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex-shrink-0 w-16 text-center">
+                  <span className="text-xl font-bold text-blue-600">+{opp.estimated_impact}</span>
+                  <p className="text-xs text-blue-600">pts</p>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium text-gray-900">{opp.action}</span>
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${
+                      opp.difficulty === 'Easy' ? 'bg-green-100 text-green-700' :
+                      opp.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {opp.difficulty}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600">{opp.details}</p>
+                  <p className="text-xs text-gray-500 mt-1">Category: {opp.category}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Requirements Comparison Table */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Protocol Requirements vs Site Capabilities</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left p-3 font-semibold text-gray-700">Requirement</th>
-                <th className="text-left p-3 font-semibold text-gray-700">Protocol Needs</th>
-                <th className="text-left p-3 font-semibold text-gray-700">Site Has</th>
-                <th className="text-center p-3 font-semibold text-gray-700">Match</th>
-              </tr>
-            </thead>
-            <tbody>
-              {feasibilityData.requirements_comparison?.map((req: any, index: number) => (
-                <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="p-3 text-gray-800">{req.requirement}</td>
-                  <td className="p-3 text-gray-600">{req.protocol_needs}</td>
-                  <td className="p-3 text-gray-600">{req.site_has}</td>
-                  <td className="p-3 text-center text-xl">{req.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* AI Assessment Summary */}
+      {feasibilityData.ai_assessment && (feasibilityData.ai_assessment.summary || feasibilityData.ai_assessment.assessment) && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">🤖 AI Assessment</h3>
 
-      {/* Data Sources */}
-      <div className="text-center text-sm text-gray-400 mb-6">
-        Data Sources: Site Profile, ClinicalTrials.gov
+          {(feasibilityData.ai_assessment.summary || feasibilityData.ai_assessment.assessment) && (
+            <p className="text-gray-700 mb-4">
+              {feasibilityData.ai_assessment.summary || feasibilityData.ai_assessment.assessment}
+            </p>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            {feasibilityData.ai_assessment.strengths && feasibilityData.ai_assessment.strengths.length > 0 && (
+              <div>
+                <h4 className="font-medium text-green-700 mb-2">✅ Strengths</h4>
+                <ul className="space-y-1">
+                  {feasibilityData.ai_assessment.strengths.map((s: string, i: number) => (
+                    <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                      <span className="text-green-500 mt-0.5">•</span>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {feasibilityData.ai_assessment.considerations && feasibilityData.ai_assessment.considerations.length > 0 && (
+              <div>
+                <h4 className="font-medium text-yellow-700 mb-2">⚠️ Considerations</h4>
+                <ul className="space-y-1">
+                  {feasibilityData.ai_assessment.considerations.map((c: string, i: number) => (
+                    <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                      <span className="text-yellow-500 mt-0.5">•</span>
+                      {c}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {feasibilityData.ai_assessment.recommendation && (
+            <div className="pt-3 border-t border-blue-200">
+              <span className="text-sm font-medium text-gray-600">Recommendation: </span>
+              <span className={`font-semibold ${
+                feasibilityData.ai_assessment.recommendation.includes('Highly') ? 'text-green-600' :
+                feasibilityData.ai_assessment.recommendation.includes('Not') ? 'text-red-600' :
+                'text-blue-600'
+              }`}>
+                {feasibilityData.ai_assessment.recommendation}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Protocol Requirements vs Site Capabilities */}
+      {feasibilityData.requirements_comparison && feasibilityData.requirements_comparison.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Protocol Requirements vs Site Capabilities</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-3 px-4 font-semibold text-gray-900">Requirement</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-900">Protocol Needs</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-900">Site Has</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-900">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feasibilityData.requirements_comparison.map((req: any, idx: number) => (
+                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-3 px-4">
+                      <span className="font-medium text-gray-900">{req.requirement}</span>
+                      {req.category && (
+                        <span className="block text-xs text-gray-500">{req.category}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-gray-700">
+                      {req.protocol_need || req.protocol_needs || 'Required'}
+                    </td>
+                    <td className="py-3 px-4 text-gray-700">
+                      {req.site_capability || req.site_has || '—'}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {typeof req.status === 'string' && ['MET', 'PARTIALLY_MET', 'NOT_MET', 'UNKNOWN'].includes(req.status) ? (
+                        <span className={`inline-flex px-3 py-1 rounded-full text-sm font-medium ${
+                          req.status === 'MET' ? 'bg-green-100 text-green-800' :
+                          req.status === 'PARTIALLY_MET' ? 'bg-yellow-100 text-yellow-800' :
+                          req.status === 'NOT_MET' ? 'bg-red-100 text-red-800' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {req.status.replace('_', ' ')}
+                        </span>
+                      ) : (
+                        <span className="text-xl">{req.status || '—'}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {feasibilityData.requirements_comparison.some((r: any) => r.notes) && (
+            <div className="mt-4 text-sm text-gray-600">
+              {feasibilityData.requirements_comparison
+                .filter((r: any) => r.notes)
+                .map((r: any, i: number) => (
+                  <p key={i}>• <strong>{r.requirement}:</strong> {r.notes}</p>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* CT.gov Verification Section */}
+      <CTGovVerificationSection siteProfile={siteProfile} />
+
+      {/* Data Sources Footer */}
+      <div className="text-center text-sm text-gray-500">
+        Data Sources: {feasibilityData.data_sources?.join(', ') || 'Site Profile, ClinicalTrials.gov'}
+        {feasibilityData.assessed_at && (
+          <span> | Assessed: {new Date(feasibilityData.assessed_at).toLocaleString()}</span>
+        )}
       </div>
 
       {/* Action Buttons */}
       <div className="flex justify-center gap-4">
         <button
           onClick={() => setCurrentView('review')}
-          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+          className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
         >
           Review Answers
         </button>
         <button
           onClick={() => setCurrentView('upload')}
-          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+          className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
         >
           Back to Upload
         </button>
@@ -1703,13 +2260,14 @@ function ProcessStep({ time, task, icon, automated = false }: any) {
   );
 }
 
-function StatusBadge({ status }: any) {
-  const config = {
+function StatusBadge({ status }: { status: string }) {
+  const statusConfig: Record<string, { bg: string; text: string }> = {
     submitted: { bg: 'bg-green-100', text: 'text-green-800' },
     autofilled: { bg: 'bg-blue-100', text: 'text-blue-800' },
     processing: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
     pending: { bg: 'bg-gray-100', text: 'text-gray-800' }
-  }[status] || { bg: 'bg-gray-100', text: 'text-gray-800' };
+  };
+  const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800' };
 
   return (
     <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>

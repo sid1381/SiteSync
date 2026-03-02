@@ -4,13 +4,23 @@ from typing import List, Optional, Dict
 from datetime import date, datetime
 import json
 import logging
+import os
 from pydantic import BaseModel
 from app.db import get_session
 from app import models
 from app.schemas.survey import SurveyCreate
-from app.services.feasibility_scorer import calculate_feasibility_score
+
+# Feature flag for AI-powered feasibility scoring
+# Set USE_AI_FEASIBILITY_SCORER=false to disable and use rule-based scorer
+USE_AI_SCORER = os.getenv("USE_AI_FEASIBILITY_SCORER", "true").lower() == "true"
+
+if USE_AI_SCORER:
+    from app.services.ai_feasibility_scorer import calculate_ai_feasibility_score as calculate_feasibility_score
+else:
+    from app.services.feasibility_scorer import calculate_feasibility_score
 
 logger = logging.getLogger(__name__)
+logger.info(f"🧠 Feasibility scorer: {'AI-powered (GPT-4o)' if USE_AI_SCORER else 'Rule-based'}")
 
 router = APIRouter(prefix="/surveys", tags=["surveys"])
 
